@@ -4,21 +4,18 @@ use std::io::prelude::*;
 use std::io::SeekFrom; // temp
 use std::fs::File;
 use std::path::Path;
-use sha2::{Sha256, Digest};
+use digest::Digest;
 use std::convert::TryInto;
-use generic_array::GenericArray;
-use generic_array::typenum::U32;
-
-pub type HashResult = GenericArray<u8, U32>;
+use generic_array::{GenericArray, ArrayLength};
 
 fn ceil_div(num: u64, denom: u64) -> u64 {
     let result = num / denom;
+    // return
     match num % denom {
         0 => result,
         _ => result + 1
     }
 }
-
 fn exp_ceil_log(number: u64, base: u16) -> u64 {
     let base_as_u64: u64 = base.into();
     let mut result = 1;
@@ -28,28 +25,46 @@ fn exp_ceil_log(number: u64, base: u16) -> u64 {
     // return
     result
 }
-pub fn merkle_hash_file(path: &Path, block_size: u32, branch: u16) -> HashResult{
+fn print_arr<N>(prefix_str: &str, arr: &GenericArray<u8, N>)
+where
+    N: ArrayLength<u8>
+{
+    print!("{}", prefix_str);
+    for byte_val in arr {
+        print!("{:02x}", byte_val);
+    }
+    print!("\n");
+}
+
+pub fn merkle_hash_file<T>(path: &Path, block_size: u32, branch: u16) -> GenericArray<u8, T::OutputSize>
+where
+    T: Digest
+{
     // TODO: error handling
+    type HashResult<T> = GenericArray<u8, <T as Digest>::OutputSize>;
     let mut file: File = File::open(path).unwrap();
     let file_len = file.metadata().unwrap().len();
     println!("File is {} bytes long",file_len);
     let block_count = ceil_div(file_len, block_size.into());
     let effective_block_count = exp_ceil_log(block_count, branch);
-    let mut hash_out: HashResult = HashResult::default();
-    merkle_tree_file_helper(&mut file, block_size, block_count,
+    let mut hash_out = HashResult::<T>::default();
+    merkle_tree_file_helper::<T>(&mut file, block_size, block_count,
         branch, &mut hash_out, 0, effective_block_count);
-    // return
-    hash_out
+    return hash_out;
 }
 
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
 // Include the first and exclude the last
-fn merkle_tree_file_helper(file: &mut File,
+fn merkle_tree_file_helper<T>(file: &mut File,
         block_size: u32, block_count: u64,
-        branch: u16, hash_out: &mut HashResult,
-        start_block: u64, end_block: u64) {
+        branch: u16, hash_out: &mut GenericArray<u8, T::OutputSize>,
+        start_block: u64, end_block: u64)
+where
+    T: Digest
+{
+    type HashResult<T> = GenericArray<u8, <T as Digest>::OutputSize>;
     assert!(end_block > start_block);
-    assert!(hash_out.len() == sha2::Sha256::output_size());
+    assert!(hash_out.len() == <T as Digest>::output_size());
     println!("Hashing blocks [{}:{})", start_block, end_block);
 
     if start_block < block_count {
@@ -71,25 +86,26 @@ fn merkle_tree_file_helper(file: &mut File,
                 assert!(start_block == block_count-1);
             }
 
-            // Type annotate to ensure the correct type
-            let hash_result: HashResult = Sha256::digest(file_vec.as_slice());
-            println!("Block hash is {:x}", hash_result);
+            let hash_result = T::digest(file_vec.as_slice());
+            //println!("Block hash is {:x}", hash_result);
+            print_arr("Block hash is ", &hash_result);
+            
             hash_out.copy_from_slice(hash_result.as_slice());
         } else {
             // power-of-branch check
             assert!(block_interval % (branch as u64) == 0);
             let block_increment = block_interval / (branch as u64);
-            let mut hash_vector: Vec::<HashResult> = Vec::new();
-            hash_vector.resize(branch.into(), HashResult::default());
+            let mut hash_vector: Vec::<HashResult<T>> = Vec::new();
+            hash_vector.resize(branch.into(), HashResult::<T>::default());
             // Compute the hash for each branch
             for incr_count in 0..(branch as u64) {
                 let incr_index: usize = incr_count.try_into().unwrap();
                 let slice_start = start_block + incr_count * block_increment;
                 let slice_end = start_block + (incr_count + 1) * block_increment;
-                merkle_tree_file_helper(file, block_size, block_count, branch, &mut hash_vector[incr_index], slice_start, slice_end);
+                merkle_tree_file_helper::<T>(file, block_size, block_count, branch, &mut hash_vector[incr_index], slice_start, slice_end);
             }
             let combined_input = hash_vector.concat();
-            let hash_result: HashResult = Sha256::digest(combined_input.as_slice());
+            let hash_result = T::digest(combined_input.as_slice());
             hash_out.copy_from_slice(hash_result.as_slice());
         }
     }
