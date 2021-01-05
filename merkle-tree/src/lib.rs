@@ -4,13 +4,14 @@ mod merkle_utils;
 
 use std::io::prelude::*;
 use std::io::SeekFrom;
+use std::io::BufReader;
 use std::fs::File;
 use std::convert::TryInto;
 use digest::Digest;
 use generic_array::{GenericArray};
 use merkle_utils::*;
 
-pub fn merkle_hash_file<T>(mut file: File, block_size: u32, branch: u16) -> GenericArray<u8, T::OutputSize>
+pub fn merkle_hash_file<T>(file: File, block_size: u32, branch: u16) -> GenericArray<u8, T::OutputSize>
 where
     T: Digest
 {
@@ -20,16 +21,17 @@ where
     let block_count = ceil_div(file_len, block_size.into());
     let effective_block_count = exp_ceil_log(block_count, branch);
 
+    let mut file_buf = BufReader::new(file);
     let mut hash_out = HashResult::<T>::default();
     let block_range = BlockRange::new(0, effective_block_count);
-    merkle_tree_file_helper::<T>(&mut file, block_size, block_count,
+    merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
         branch, &mut hash_out, block_range);
     return hash_out;
 }
 
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
 // Block range includes the first and excludes the last
-fn merkle_tree_file_helper<T>(file: &mut File,
+fn merkle_tree_file_helper<T>(file: &mut BufReader<File>,
         block_size: u32, block_count: u64,
         branch: u16, hash_out: &mut GenericArray<u8, T::OutputSize>,
         block_range: BlockRange)
