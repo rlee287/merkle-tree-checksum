@@ -1,4 +1,5 @@
 use generic_array::{GenericArray, ArrayLength};
+use std::fmt;
 
 pub(crate) fn ceil_div(num: u64, denom: u64) -> u64 {
     let result = num / denom;
@@ -27,4 +28,28 @@ where
         print!("{:02x}", byte_val);
     }
     print!("\n");
+}
+
+
+#[derive(Debug,Copy,Clone)]
+pub(crate) struct BlockRange {
+    pub start: u64,
+    pub end: u64
+}
+impl BlockRange {
+    pub fn new(start: u64, end: u64) -> BlockRange {
+        BlockRange {start: start, end: end}
+    }
+    pub fn range(&self) -> u64 {
+        match self.start <= self.end {
+            true  => self.end - self.start,
+            false => self.start - self.end
+        }
+    }
+}
+
+impl fmt::Display for BlockRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}, {})", self.start, self.end)
+    }
 }
