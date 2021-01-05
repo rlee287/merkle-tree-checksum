@@ -1,40 +1,15 @@
 #![forbid(unsafe_code)]
 
+mod merkle_utils;
+
 use std::io::prelude::*;
 use std::io::SeekFrom; // temp
 use std::fs::File;
 use std::path::Path;
 use digest::Digest;
 use std::convert::TryInto;
-use generic_array::{GenericArray, ArrayLength};
-
-fn ceil_div(num: u64, denom: u64) -> u64 {
-    let result = num / denom;
-    // return
-    match num % denom {
-        0 => result,
-        _ => result + 1
-    }
-}
-fn exp_ceil_log(number: u64, base: u16) -> u64 {
-    let base_as_u64: u64 = base.into();
-    let mut result = 1;
-    while result < number {
-        result = result * base_as_u64;
-    }
-    // return
-    result
-}
-fn print_arr<N>(prefix_str: &str, arr: &GenericArray<u8, N>)
-where
-    N: ArrayLength<u8>
-{
-    print!("{}", prefix_str);
-    for byte_val in arr {
-        print!("{:02x}", byte_val);
-    }
-    print!("\n");
-}
+use generic_array::{GenericArray};
+use merkle_utils::*;
 
 pub fn merkle_hash_file<T>(path: &Path, block_size: u32, branch: u16) -> GenericArray<u8, T::OutputSize>
 where
