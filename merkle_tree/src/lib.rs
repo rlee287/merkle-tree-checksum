@@ -6,6 +6,7 @@ use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::io::BufReader;
 use std::fs::File;
+use std::cmp::max;
 use std::convert::TryInto;
 use digest::Digest;
 use generic_array::{GenericArray};
@@ -18,7 +19,7 @@ where
     // TODO: error handling
     type HashResult<T> = GenericArray<u8, <T as Digest>::OutputSize>;
     let file_len = file.metadata().unwrap().len();
-    let block_count = ceil_div(file_len, block_size.into());
+    let block_count = max(1, ceil_div(file_len, block_size.into()));
     let effective_block_count = exp_ceil_log(block_count, branch);
 
     let mut file_buf = BufReader::new(file);
