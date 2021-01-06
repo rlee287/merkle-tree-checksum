@@ -1,0 +1,15 @@
+[package]
+name = "merkle_tree_checksum"
+description = "Computes a Merkle Tree hash over the given files"
+version = "0.1.0"
+authors = ["rlee287 <rlee287@yahoo.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "~2.33.3" # ~ specification from crates.io
+walkdir = "2.3.1"
+
+sha2 = "0.9.2"
+merkle_tree = { version = "*", path = "../merkle_tree"}
