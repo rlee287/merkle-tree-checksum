@@ -1,5 +1,5 @@
 [package]
-name = "merkle-tree"
+name = "merkle_tree"
 version = "0.1.0"
 authors = ["rlee287 <rlee287@yahoo.com>"]
 edition = "2018"
