@@ -65,7 +65,7 @@ where
 
             let hash_result = T::digest(file_vec.as_slice());
             //println!("Block hash is {:x}", hash_result);
-            print_arr("Block hash is ", &hash_result);
+            println!("Block hash is {}", arr_to_hex_str(&hash_result));
             
             hash_out.copy_from_slice(hash_result.as_slice());
         } else {
