@@ -1,5 +1,6 @@
 use generic_array::{GenericArray, ArrayLength};
-use std::fmt;
+use std::fmt::{self, Write};
+use std::io::{Seek, SeekFrom};
 
 pub(crate) fn ceil_div(num: u64, denom: u64) -> u64 {
     let result = num / denom;
@@ -19,17 +20,20 @@ pub(crate) fn exp_ceil_log(number: u64, base: u16) -> u64 {
     result
 }
 
-pub(crate) fn print_arr<N>(prefix_str: &str, arr: &GenericArray<u8, N>)
+pub(crate) fn arr_to_hex_str<N>(arr: &GenericArray<u8, N>) -> String
 where
     N: ArrayLength<u8>
 {
-    print!("{}", prefix_str);
+    let mut return_str: String = "".to_string();
     for byte_val in arr {
-        print!("{:02x}", byte_val);
+        write!(return_str, "{:02x}", byte_val).unwrap();
     }
-    print!("\n");
+    return return_str;
 }
 
+pub(crate) fn current_seek_pos(file: &mut dyn Seek) -> u64 {
+    file.seek(SeekFrom::Current(0)).unwrap()
+}
 
 #[derive(Debug,Copy,Clone)]
 pub(crate) struct BlockRange {
