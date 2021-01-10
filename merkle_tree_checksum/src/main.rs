@@ -134,7 +134,7 @@ fn run() -> i32 {
         };
         if short_output {
             let hash_result = merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, &mut io::sink());
-            writeln!(write_handle, "{}  {:x}", file_name, hash_result).unwrap();
+            writeln!(write_handle, "{:x}  {}", hash_result, file_name).unwrap();
         } else {
             writeln!(write_handle, "File {}", file_name).unwrap();
             // Final entry is the final hash
