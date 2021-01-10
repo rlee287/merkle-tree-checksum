@@ -1,5 +1,6 @@
 use generic_array::{GenericArray, ArrayLength};
 use std::fmt::{self, Write};
+use std::io::{Seek, SeekFrom};
 
 pub(crate) fn ceil_div(num: u64, denom: u64) -> u64 {
     let result = num / denom;
@@ -30,6 +31,9 @@ where
     return return_str;
 }
 
+pub(crate) fn current_seek_pos(file: &mut dyn Seek) -> u64 {
+    file.seek(SeekFrom::Current(0)).unwrap()
+}
 
 #[derive(Debug,Copy,Clone)]
 pub(crate) struct BlockRange {
