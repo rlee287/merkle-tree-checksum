@@ -3,7 +3,14 @@ extern crate merkle_tree;
 #[macro_use]
 extern crate clap;
 
+use std::boxed::Box;
+use std::convert::AsMut;
+use std::env::args;
+
+use chrono::Local;
+
 use std::fs::File;
+use std::io::{self, Write, BufWriter};
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -42,7 +49,7 @@ fn run() -> i32 {
                 }
             })
             .help("Branch factor for tree"))
-        .arg(Arg::with_name("blocksize").long("block-size").short("s")
+        .arg(Arg::with_name("blocksize").long("block-length").short("l")
             .takes_value(true).default_value("4096")
             .validator(|input_str| -> Result<(), String> {
                 match input_str.parse::<u32>() {
@@ -51,9 +58,12 @@ fn run() -> i32 {
                 }
             })
             .help("Block size for hash"))
-        .arg(Arg::with_name("verbose").long("verbose").short("v")
-            .multiple(true)
-            .help("Be verbose"))
+        .arg(Arg::with_name("output").long("output").short("o")
+            .takes_value(true)
+            .help("Output file (default stdout)"))
+        .arg(Arg::with_name("short").long("short").short("s")
+            .help("Output only the summary hash")
+            .long_help("Write only the summary hash to the output. This will make identifying corrupted locations impossible."))
         .arg(Arg::with_name("FILES").required(true)
             .multiple(true).last(true))
         .get_matches();
@@ -61,7 +71,7 @@ fn run() -> i32 {
     // Unwraps succeeds because validators should already have caught errors
     let block_size: u32 = matches.value_of("blocksize").unwrap().parse().unwrap();
     let branch_factor: u16 = matches.value_of("branch").unwrap().parse().unwrap();
-    let verbosity = matches.occurrences_of("verbose");
+    let short_output = matches.is_present("short");
     let mut file_list = Vec::<String>::new();
     for file_str in matches.values_of("FILES").unwrap() {
         let file_path = Path::new(file_str);
@@ -69,6 +79,7 @@ fn run() -> i32 {
             println!("{}", file_path.display());
             file_list.push(file_str.to_owned());
         } else if file_path.is_dir() {
+            // Walk directory to find all the files in it
             for entry in WalkDir::new(file_path).min_depth(1) {
                 let entry_unwrap = entry.unwrap();
                 let entry_path = entry_unwrap.path();
@@ -83,16 +94,53 @@ fn run() -> i32 {
         }
     }
     println!("File list is {:?}", file_list);
+    let mut arg_vec: Vec<String> = Vec::new();
+    // Scope the argument iteration variables
+    {
+        let mut arg_iter = args();
+        // Skip the first element (binary name)
+        arg_iter.next();
+        for arg in arg_iter {
+            if arg == "--" {
+                break;
+            }
+            arg_vec.push(arg);
+        }
+    }
+    let mut out_file: Box<dyn Write> = match matches.value_of("output") {
+        None => Box::new(io::stdout()),
+        Some(name) => match File::create(name) {
+            Ok(file) => Box::new(BufWriter::new(file)),
+            Err(err) => {
+                eprintln!("Error opening file {} for writing: {}",
+                    name, err);
+                return 1
+            }
+        }
+    };
+    let write_handle: &mut dyn Write = out_file.as_mut();
+    writeln!(write_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
+    writeln!(write_handle, "Arguments: {}", arg_vec.join(" ")).unwrap();
+    writeln!(write_handle, "Started {}", Local::now().to_rfc2822()).unwrap();
+    write_handle.flush().unwrap();
     for file_name in file_list {
         let file_obj = match File::open(file_name.to_owned()) {
             Ok(file) => file,
             Err(err) => {
-                eprintln!("Error opening file {}: {}", file_name, err);
+                eprintln!("Error opening file {} for reading: {}",
+                    file_name, err);
                 return 1
             }
         };
-        let hash_result = merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor);
-        println!("Final hash is {:x}", hash_result);
+        if short_output {
+            let hash_result = merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, &mut io::sink());
+            writeln!(write_handle, "{}  {:x}", file_name, hash_result).unwrap();
+        } else {
+            writeln!(write_handle, "File {}", file_name).unwrap();
+            // Final entry is the final hash
+            merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, write_handle);
+        }
+        write_handle.flush().unwrap();
     }
     return 0;
 }
