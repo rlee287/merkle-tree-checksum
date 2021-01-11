@@ -11,3 +11,7 @@ publish = false
 digest = "0.9"
 generic-array = "0.14.4"
 # hmac = "0.10.1"
+
+# We don't care about dependency internals when debugging our code
+[profile.dev.package."*"]
+opt-level = 3

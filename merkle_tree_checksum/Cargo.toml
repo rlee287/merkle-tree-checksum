@@ -20,3 +20,8 @@ merkle_tree = { version = "*", path = "../merkle_tree"}
 version = "~2.33.3" # ~ specification from crates.io
 default-features = false
 features = [ "wrap_help", "color" ]
+
+# Hashing is the bottleneck from profiling
+# We don't care about dependency internals when debugging our code
+[profile.dev.package.sha2]
+opt-level = 3
