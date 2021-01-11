@@ -3,6 +3,7 @@ name = "merkle_tree"
 version = "0.1.0"
 authors = ["rlee287 <rlee287@yahoo.com>"]
 edition = "2018"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,3 +11,7 @@ edition = "2018"
 digest = "0.9"
 generic-array = "0.14.4"
 # hmac = "0.10.1"
+
+# We don't care about dependency internals when debugging our code
+[profile.dev.package."*"]
+opt-level = 3
