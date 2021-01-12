@@ -68,6 +68,8 @@ where
                     // Ensure that reading less than requested only occurs when EOF
                     assert!(block_range.start == block_count-1);
                 }
+                // Prepend 0x00
+                file_vec.insert(0, 0x00);
                 T::digest(file_vec.as_slice())
                 //println!("Hashed block {}", block_range.start);
                 //println!("Block hash is {}", arr_to_hex_str(&hash_result));
@@ -86,7 +88,9 @@ where
                     let slice_range = BlockRange::new(slice_start, slice_end);
                     merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, &mut hash_vector[incr_index], write_out, progress_tracker);
                 }
-                let combined_input = hash_vector.concat();
+                let mut combined_input = hash_vector.concat();
+                // Prepend 0x01
+                combined_input.insert(0, 0x01);
                 T::digest(combined_input.as_slice())
 
                 //println!("Hashed blocks {}", block_range);
