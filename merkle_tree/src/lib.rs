@@ -56,10 +56,8 @@ where
 
                 // First resize to block-size to read in a full block...
                 file_vec.resize(block_size.try_into().unwrap(), 0);
-                //let current_pos = file.seek(SeekFrom::Current(0)).unwrap();
                 let current_pos = current_seek_pos(file);
                 assert!(current_pos == block_range.start*(block_size as u64));
-                //println!("Reading bytes {}-{}", current_pos, current_pos+(block_size as u64)-1);
                 let bytes_read = file.read(file_vec.as_mut_slice()).unwrap();
                 // ...then shrink the vector to the number of bytes read, if needed
                 if bytes_read < block_size.try_into().unwrap() {
@@ -71,8 +69,6 @@ where
                 // Prepend 0x00
                 file_vec.insert(0, 0x00);
                 T::digest(file_vec.as_slice())
-                //println!("Hashed block {}", block_range.start);
-                //println!("Block hash is {}", arr_to_hex_str(&hash_result));
             }
             _ => {
                 // power-of-branch check
@@ -92,11 +88,10 @@ where
                 // Prepend 0x01
                 combined_input.insert(0, 0x01);
                 T::digest(combined_input.as_slice())
-
-                //println!("Hashed blocks {}", block_range);
-                //println!("Node hash is {}", arr_to_hex_str(&hash_result));
             }
         };
+        // Byte range start is always theoretical
+        // Byte range end may differ due to EOF
         let start_byte = block_range.start*(block_size as u64);
         let end_byte_block = block_range.end*(block_size as u64)-1;
         let end_byte_file = match current_seek_pos(file) {
@@ -104,6 +99,7 @@ where
             val => val - 1
         };
         progress_tracker.incr();
+        // [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
         writeln!(write_out,"[0x{:08x}-0x{:08x}] [0x{:08x}-0x{:08x}] {}",
             start_byte, end_byte_block, start_byte, end_byte_file,
             arr_to_hex_str(&hash_result)).unwrap();
