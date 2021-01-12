@@ -54,6 +54,7 @@ fn run() -> i32 {
             .takes_value(true).default_value("4")
             .validator(|input_str| -> Result<(), String> {
                 match input_str.parse::<u16>() {
+                    Ok(0) | Ok(1) => Err("branch must be >= 2".to_string()),
                     Ok(_) => Ok(()),
                     Err(err) => Err(err.to_string())
                 }
@@ -63,11 +64,12 @@ fn run() -> i32 {
             .takes_value(true).default_value("4096")
             .validator(|input_str| -> Result<(), String> {
                 match input_str.parse::<u32>() {
+                    Ok(0) => Err("blocksize must be positive".to_string()),
                     Ok(_) => Ok(()),
                     Err(err) => Err(err.to_string())
                 }
             })
-            .help("Block size for hash"))
+            .help("Block size to hash over, in bytes"))
         .arg(Arg::with_name("output").long("output").short("o")
             .takes_value(true)
             .help("Output file (default stdout)"))
