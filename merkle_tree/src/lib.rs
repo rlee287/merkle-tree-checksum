@@ -24,7 +24,8 @@ where
     let block_count = max(1, ceil_div(file_len, block_size.into()));
     let effective_block_count = exp_ceil_log(block_count, branch);
 
-    let mut file_buf = BufReader::new(file);
+    let mut file_buf = BufReader::with_capacity(
+        (block_size*(branch as u32)).try_into().unwrap(), file);
     let mut hash_out = HashResult::<T>::default();
     let block_range = BlockRange::new(0, effective_block_count);
     merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
