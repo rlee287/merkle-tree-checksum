@@ -145,7 +145,7 @@ fn run() -> i32 {
             merkle_tree::node_count(file_obj.metadata().unwrap().len(), block_size, branch_factor)
         );
         let pb_style = ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] {pos}/{len} (hash rate {per_sec}) ETA [{eta_precise}] {wide_msg}");
+            .template("{msg:25!} {pos:>8}/{len:8} {per_sec:>8} [{elapsed_precise}] ETA [{eta_precise}]");
         pb.set_style(pb_style);
         pb.set_message(Path::new(&file_name).file_name().unwrap().to_str().unwrap());
         pb.tick();
