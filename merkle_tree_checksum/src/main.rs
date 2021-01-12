@@ -35,13 +35,6 @@ fn main() {
 }
 
 fn run() -> i32 {
-    /*for entry in WalkDir::new("target").min_depth(1) {
-        let entry_unwrap = entry.unwrap();
-        let entry_path = entry_unwrap.path();
-        if entry_path.is_file() {
-            println!("{}", entry_path.display());
-        }
-    }*/
     let matches = App::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!())
