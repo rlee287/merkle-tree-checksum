@@ -154,9 +154,9 @@ fn run() -> i32 {
             // Final entry is the final hash
             merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, write_handle, &mut pb_incr);
         }
+        write_handle.flush().unwrap();
         assert_eq!(pb.position(), pb.length());
         pb.finish_at_current_pos();
-        write_handle.flush().unwrap();
     }
     return 0;
 }
