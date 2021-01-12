@@ -10,9 +10,11 @@ use std::convert::TryInto;
 use digest::Digest;
 use generic_array::{GenericArray};
 use merkle_utils::*;
+pub use merkle_utils::{node_count, Incrementable};
 
 pub fn merkle_hash_file<T>(file: File, block_size: u32, branch: u16,
-        write_out: &mut dyn Write) -> GenericArray<u8, T::OutputSize>
+        write_out: &mut dyn Write, progress_tracker: &mut dyn Incrementable)
+         -> GenericArray<u8, T::OutputSize>
 where
     T: Digest
 {
@@ -26,7 +28,7 @@ where
     let mut hash_out = HashResult::<T>::default();
     let block_range = BlockRange::new(0, effective_block_count);
     merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
-        block_range, branch, &mut hash_out, write_out);
+        block_range, branch, &mut hash_out, write_out, progress_tracker);
     return hash_out;
 }
 
@@ -36,7 +38,7 @@ fn merkle_tree_file_helper<T>(file: &mut BufReader<File>,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
         hash_out: &mut GenericArray<u8, T::OutputSize>,
-        write_out: &mut dyn Write)
+        write_out: &mut dyn Write, progress_tracker: &mut dyn Incrementable)
 where
     T: Digest
 {
@@ -81,7 +83,7 @@ where
                     let slice_start = block_range.start + incr_count * block_increment;
                     let slice_end = block_range.start + (incr_count + 1) * block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end);
-                    merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, &mut hash_vector[incr_index], write_out);
+                    merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, &mut hash_vector[incr_index], write_out, progress_tracker);
                 }
                 let combined_input = hash_vector.concat();
                 T::digest(combined_input.as_slice())
@@ -96,6 +98,7 @@ where
             0 => 0,
             val => val - 1
         };
+        progress_tracker.incr();
         writeln!(write_out,"[0x{:08x}-0x{:08x}] [0x{:08x}-0x{:08x}] {}",
             start_byte, end_byte_block, start_byte, end_byte_file,
             arr_to_hex_str(&hash_result)).unwrap();

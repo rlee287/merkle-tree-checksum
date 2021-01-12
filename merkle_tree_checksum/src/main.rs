@@ -3,7 +3,6 @@ extern crate merkle_tree;
 #[macro_use]
 extern crate clap;
 
-use std::boxed::Box;
 use std::convert::AsMut;
 use std::env::args;
 
@@ -15,9 +14,20 @@ use std::path::Path;
 use walkdir::WalkDir;
 
 use sha2::Sha256;
+
 use clap::{App, Arg};
+use indicatif::{ProgressBar, ProgressStyle};
 
 const HASH_LIST: &[&str] = &["sha224", "sha256", "sha384", "sha512"];
+
+struct ProgressBarAsIncrementable {
+    pb: ProgressBar
+}
+impl merkle_tree::Incrementable for ProgressBarAsIncrementable {
+    fn incr(&mut self) {
+        self.pb.inc(1);
+    }
+}
 
 fn main() {
     let status_code = run();
@@ -84,7 +94,6 @@ fn run() -> i32 {
                 let entry_unwrap = entry.unwrap();
                 let entry_path = entry_unwrap.path();
                 if entry_path.is_file() {
-                    println!("{}", entry_path.display());
                     file_list.push(entry_path.to_str().unwrap().to_owned());
                 }
             }
@@ -93,7 +102,6 @@ fn run() -> i32 {
             return 1;
         }
     }
-    println!("File list is {:?}", file_list);
     let mut arg_vec: Vec<String> = Vec::new();
     // Scope the argument iteration variables
     {
@@ -123,6 +131,7 @@ fn run() -> i32 {
     writeln!(write_handle, "Arguments: {}", arg_vec.join(" ")).unwrap();
     writeln!(write_handle, "Started {}", Local::now().to_rfc2822()).unwrap();
     write_handle.flush().unwrap();
+
     for file_name in file_list {
         let file_obj = match File::open(file_name.to_owned()) {
             Ok(file) => file,
@@ -132,14 +141,26 @@ fn run() -> i32 {
                 return 1
             }
         };
+        let pb = ProgressBar::new(
+            merkle_tree::node_count(file_obj.metadata().unwrap().len(), block_size, branch_factor)
+        );
+        let pb_style = ProgressStyle::default_bar()
+            .template("{msg:25!} {pos:>8}/{len:8} {per_sec:>8} [{elapsed_precise}] ETA [{eta_precise}]");
+        pb.set_style(pb_style);
+        pb.set_message(Path::new(&file_name).file_name().unwrap().to_str().unwrap());
+        pb.tick();
+        // Clone is fine as ProgressBar is an Arc around internal state
+        let mut pb_incr = ProgressBarAsIncrementable {pb: pb.clone()};
         if short_output {
-            let hash_result = merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, &mut io::sink());
+            let hash_result = merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, &mut io::sink(), &mut pb_incr);
             writeln!(write_handle, "{:x}  {}", hash_result, file_name).unwrap();
         } else {
             writeln!(write_handle, "File {}", file_name).unwrap();
             // Final entry is the final hash
-            merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, write_handle);
+            merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, write_handle, &mut pb_incr);
         }
+        assert_eq!(pb.position(), pb.length());
+        pb.finish_at_current_pos();
         write_handle.flush().unwrap();
     }
     return 0;
