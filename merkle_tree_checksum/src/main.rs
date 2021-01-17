@@ -63,11 +63,13 @@ fn run() -> i32 {
                 }
             })
             .help("Block size to hash over, in bytes"))
+        .arg(Arg::with_name("quiet").long("quiet").short("q")
+            .help("Hide the progress bar"))
         .arg(Arg::with_name("output").long("output").short("o")
             .takes_value(true)
             .help("Output file (default stdout)"))
         .arg(Arg::with_name("short").long("short").short("s")
-            .help("Output only the summary hash")
+            .help("Write only the summary hash")
             .long_help("Write only the summary hash to the output. This will make identifying corrupted locations impossible."))
         .arg(Arg::with_name("FILES").required(true)
             .multiple(true).last(true))
@@ -81,7 +83,6 @@ fn run() -> i32 {
     for file_str in matches.values_of("FILES").unwrap() {
         let file_path = Path::new(file_str);
         if file_path.is_file() {
-            println!("{}", file_path.display());
             file_list.push(file_str.to_owned());
         } else if file_path.is_dir() {
             // Walk directory to find all the files in it
@@ -155,8 +156,11 @@ fn run() -> i32 {
             merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, write_handle, &mut pb_incr);
         }
         write_handle.flush().unwrap();
-        assert_eq!(pb.position(), pb.length());
+        if !matches.is_present("quiet") {
+            assert_eq!(pb.position(), pb.length());
+        }
         pb.finish_at_current_pos();
+
     }
     return 0;
 }
