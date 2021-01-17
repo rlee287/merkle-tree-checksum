@@ -4,6 +4,8 @@ extern crate merkle_tree;
 extern crate clap;
 
 use std::convert::AsMut;
+use std::iter::FromIterator;
+use std::cmp::min;
 use std::env::args;
 
 use chrono::Local;
@@ -26,6 +28,26 @@ struct ProgressBarAsIncrementable {
 impl merkle_tree::Incrementable for ProgressBarAsIncrementable {
     fn incr(&mut self) {
         self.pb.inc(1);
+    }
+}
+
+fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
+    let name_chars = Vec::from_iter(name.chars());
+    if name.len() <= len_threshold {
+        // TODO: is copy avoidable?
+        return name.to_owned();
+    } else if len_threshold <= 3 {
+        // Return the first 3 chars (*not* bytes)
+        return name_chars[..3].iter().collect::<String>();
+    } else {
+        // Join the beginning and end part of the name with ellipses
+        let filechar_count = len_threshold - 3;
+        // Use subtraction to ensure consistent sum
+        let end_half_len = filechar_count / 2;
+        let begin_half_len = filechar_count - end_half_len;
+        return [&name[..begin_half_len],
+                "...",
+                &name[name.len()-end_half_len..]].join("");
     }
 }
 
@@ -137,14 +159,24 @@ fn run() -> i32 {
                 return 1
             }
         };
-        let pb = ProgressBar::new(
-            merkle_tree::node_count(file_obj.metadata().unwrap().len(), block_size, branch_factor)
-        );
+        let pb_len = merkle_tree::node_count(file_obj.metadata().unwrap().len(), block_size, branch_factor);
+        let pb = match matches.is_present("quiet") {
+            false => ProgressBar::new(pb_len),
+            true => ProgressBar::hidden()
+        };
         let pb_style = ProgressStyle::default_bar()
-            .template("{msg:25!} {pos:>8}/{len:8} {per_sec:>8} [{elapsed_precise}] ETA [{eta_precise}]");
-        pb.set_style(pb_style);
-        pb.set_message(Path::new(&file_name).file_name().unwrap().to_str().unwrap());
-        pb.tick();
+            .template("{msg:25!} {pos:>8}/{len:8} | {per_sec:>8} [{elapsed_precise}] ETA [{eta_precise}]");
+        // Scope ProgressBar setup
+        {
+            pb.set_style(pb_style);
+            let file_part = Path::new(&file_name).file_name().unwrap()
+                    .to_str().unwrap();
+            let abbreviated_msg = abbreviate_filename(file_part, 25);
+            assert!(abbreviated_msg.len() <= 25);
+            pb.set_message(&abbreviated_msg);
+            pb.set_draw_delta(min(pb_len/100, 512));
+            pb.tick();
+        }
         // Clone is fine as ProgressBar is an Arc around internal state
         let mut pb_incr = ProgressBarAsIncrementable {pb: pb.clone()};
         if short_output {
