@@ -38,23 +38,33 @@ pub(crate) fn current_seek_pos(file: &mut dyn Seek) -> u64 {
 #[derive(Debug,Copy,Clone)]
 pub(crate) struct BlockRange {
     pub start: u64,
-    pub end: u64
+    pub end: u64,
+    pub include_end: bool
 }
 impl BlockRange {
-    pub fn new(start: u64, end: u64) -> BlockRange {
-        BlockRange {start: start, end: end}
+    pub fn new(start: u64, end: u64, include_end: bool) -> BlockRange {
+        BlockRange {start: start, end: end, include_end: include_end}
     }
     pub fn range(&self) -> u64 {
-        match self.start <= self.end {
+        let init_range = match self.start <= self.end {
             true  => self.end - self.start,
             false => self.start - self.end
+        };
+        match self.include_end {
+            true => init_range + 1,
+            false => init_range
         }
     }
 }
 
 impl fmt::Display for BlockRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}, {})", self.start, self.end)
+        let end_char = match self.include_end {
+            true => ']',
+            false => ')'
+        };
+        // Emit [] for including end, and [) for excluding end
+        write!(f, "[0x{:08x}-0x{:08x}{}", self.start, self.end, end_char)
     }
 }
 

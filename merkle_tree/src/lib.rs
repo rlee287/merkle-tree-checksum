@@ -27,7 +27,7 @@ where
     let mut file_buf = BufReader::with_capacity(
         (block_size*(branch as u32)).try_into().unwrap(), file);
     let mut hash_out = HashResult::<T>::default();
-    let block_range = BlockRange::new(0, effective_block_count);
+    let block_range = BlockRange::new(0, effective_block_count, false);
     merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
         block_range, branch, &mut hash_out, write_out, progress_tracker);
     return hash_out;
@@ -81,7 +81,7 @@ where
                     let incr_index: usize = incr_count.try_into().unwrap();
                     let slice_start = block_range.start + incr_count * block_increment;
                     let slice_end = block_range.start + (incr_count + 1) * block_increment;
-                    let slice_range = BlockRange::new(slice_start, slice_end);
+                    let slice_range = BlockRange::new(slice_start, slice_end, false);
                     merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, &mut hash_vector[incr_index], write_out, progress_tracker);
                 }
                 let mut combined_input = hash_vector.concat();
@@ -98,11 +98,13 @@ where
             0 => 0,
             val => val - 1
         };
+        let block_range = BlockRange::new(start_byte, end_byte_block, true);
+        let byte_range = BlockRange::new(start_byte, end_byte_file, true);
         progress_tracker.incr();
         // [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
-        writeln!(write_out,"[0x{:08x}-0x{:08x}] [0x{:08x}-0x{:08x}] {}",
-            start_byte, end_byte_block, start_byte, end_byte_file,
-            arr_to_hex_str(&hash_result)).unwrap();
+        // [0x{:08x}-0x{:08x}] [0x{:08x}-0x{:08x}] {}
+        writeln!(write_out,"{} {} {}",
+            block_range, byte_range, arr_to_hex_str(&hash_result)).unwrap();
         hash_out.copy_from_slice(hash_result.as_slice());
     }
 }
