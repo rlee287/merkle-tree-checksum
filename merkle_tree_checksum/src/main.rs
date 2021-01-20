@@ -120,19 +120,7 @@ fn run() -> i32 {
             return 1;
         }
     }
-    let mut arg_vec: Vec<String> = Vec::new();
-    // Scope the argument iteration variables
-    {
-        let mut arg_iter = args();
-        // Skip the first element (binary name)
-        arg_iter.next();
-        for arg in arg_iter {
-            if arg == "--" {
-                break;
-            }
-            arg_vec.push(arg);
-        }
-    }
+
     let mut out_file: Box<dyn Write> = match matches.value_of("output") {
         None => Box::new(io::stdout()),
         Some(name) => match File::create(name) {
@@ -146,7 +134,21 @@ fn run() -> i32 {
     };
     let write_handle: &mut dyn Write = out_file.as_mut();
     writeln!(write_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
-    writeln!(write_handle, "Arguments: {}", arg_vec.join(" ")).unwrap();
+    write!(write_handle, "Arguments: ").unwrap();
+    // Scope the argument iteration variables
+    {
+        let mut arg_iter = args();
+        // Skip the first element (binary name)
+        arg_iter.next();
+        for arg in arg_iter {
+            if arg == "--" {
+                write!(write_handle, "\n").unwrap();
+                break;
+            } else {
+                write!(write_handle, "{} ", arg).unwrap();
+            }
+        }
+    }
     writeln!(write_handle, "Started {}", Local::now().to_rfc2822()).unwrap();
     write_handle.flush().unwrap();
 
