@@ -140,14 +140,14 @@ fn run() -> i32 {
         let mut arg_iter = args();
         // Skip the first element (binary name)
         arg_iter.next();
-        for arg in arg_iter {
-            if arg == "--" {
-                write!(write_handle, "\n").unwrap();
-                break;
-            } else {
-                write!(write_handle, "{} ", arg).unwrap();
+        for (index,arg) in arg_iter
+                .take_while(|arg_val| {arg_val != "--"}).enumerate() {
+            if index != 0 {
+                write!(write_handle, " ").unwrap();
             }
+            write!(write_handle, "{}", arg).unwrap();
         }
+        write!(write_handle, "\n").unwrap();
     }
     writeln!(write_handle, "Started {}", Local::now().to_rfc2822()).unwrap();
     write_handle.flush().unwrap();
