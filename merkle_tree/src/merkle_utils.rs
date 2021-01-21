@@ -19,6 +19,19 @@ pub(crate) fn exp_ceil_log(number: u64, base: u16) -> u64 {
     // return
     result
 }
+pub fn node_count(file_size: u64, block_size: u32, branch: u16) -> u64{
+    let block_count = ceil_div(file_size, block_size as u64);
+    let mut node_count = block_count;
+    let mut node_at_layer_count = block_count;
+    while node_at_layer_count > 1 {
+        node_at_layer_count = ceil_div(node_at_layer_count, branch as u64);
+        node_count += node_at_layer_count;
+    }
+    match node_count {
+        0 => 1,
+        val => val
+    }
+}
 
 pub(crate) fn arr_to_hex_str<N>(arr: &GenericArray<u8, N>) -> String
 where
@@ -68,19 +81,6 @@ impl fmt::Display for BlockRange {
     }
 }
 
-pub fn node_count(file_size: u64, block_size: u32, branch: u16) -> u64{
-    let block_count = ceil_div(file_size, block_size as u64);
-    let mut node_count = block_count;
-    let mut node_at_layer_count = block_count;
-    while node_at_layer_count > 1 {
-        node_at_layer_count = ceil_div(node_at_layer_count, branch as u64);
-        node_count += node_at_layer_count;
-    }
-    match node_count {
-        0 => 1,
-        val => val
-    }
-}
 pub trait Incrementable {
     fn incr(&mut self);
 }
