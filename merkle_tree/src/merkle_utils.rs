@@ -1,5 +1,5 @@
 use generic_array::{GenericArray, ArrayLength};
-use std::fmt::{self, Write};
+use std::fmt;
 use std::io::{Seek, SeekFrom};
 
 pub(crate) fn ceil_div(num: u64, denom: u64) -> u64 {
@@ -33,23 +33,12 @@ pub fn node_count(file_size: u64, block_size: u32, branch: u16) -> u64{
     }
 }
 
-pub(crate) fn arr_to_hex_str<N>(arr: &GenericArray<u8, N>) -> String
-where
-    N: ArrayLength<u8>
-{
-    let mut return_str: String = "".to_string();
-    for byte_val in arr {
-        write!(return_str, "{:02x}", byte_val).unwrap();
-    }
-    return return_str;
-}
-
 pub(crate) fn current_seek_pos(file: &mut dyn Seek) -> u64 {
     file.seek(SeekFrom::Current(0)).unwrap()
 }
 
 #[derive(Debug,Copy,Clone)]
-pub(crate) struct BlockRange {
+pub struct BlockRange {
     pub start: u64,
     pub end: u64,
     pub include_end: bool
@@ -77,10 +66,27 @@ impl fmt::Display for BlockRange {
             false => ')'
         };
         // Emit [] for including end, and [) for excluding end
-        write!(f, "[0x{:08x}-0x{:08x}{}", self.start, self.end, end_char)
+        write!(f, "[{:#08x}-{:#08x}{}", self.start, self.end, end_char)
     }
 }
 
-pub trait Incrementable {
-    fn incr(&mut self);
+pub struct HashRange<N> 
+where
+    N: ArrayLength<u8>
+{
+    pub block_range: BlockRange,
+    pub byte_range: BlockRange,
+    pub hash_result: GenericArray<u8, N>
+}
+impl<N> HashRange<N>
+where
+    N: ArrayLength<u8>
+{
+    pub fn new(block_range: BlockRange,
+            byte_range: BlockRange,
+            hash_result: GenericArray<u8, N>) -> HashRange<N> {
+        HashRange::<N> {block_range: block_range,
+                byte_range: byte_range,
+                hash_result: hash_result}
+    }
 }
