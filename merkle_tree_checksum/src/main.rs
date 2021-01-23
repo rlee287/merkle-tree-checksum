@@ -25,7 +25,15 @@ use sha2::Sha256;
 use clap::{App, Arg};
 use indicatif::{ProgressBar, ProgressStyle};
 
-const HASH_LIST: &[&str] = &["sha224", "sha256", "sha384", "sha512"];
+arg_enum!{
+    #[derive(PartialEq, Eq, Debug)]
+    enum HashFunctions {
+        Sha224,
+        Sha256,
+        Sha384,
+        Sha512
+    }
+}
 
 fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     let name_chars = Vec::from_iter(name.chars());
@@ -71,7 +79,8 @@ fn run() -> i32 {
         .about(crate_description!())
         .arg(Arg::with_name("hash").long("hash-function").short("f")
             .takes_value(true)
-            .default_value("sha256").possible_values(HASH_LIST)
+            .default_value("sha256").possible_values(&HashFunctions::variants())
+            .case_insensitive(true)
             .help("Hash function to use"))
         .arg(Arg::with_name("branch").long("branch-factor").short("b")
             .takes_value(true).default_value("4")
@@ -94,6 +103,7 @@ fn run() -> i32 {
             })
             .help("Block size to hash over, in bytes"))
         .arg(Arg::with_name("quiet").long("quiet").short("q")
+            //.required_unless("output")
             .help("Hide the progress bar"))
         .arg(Arg::with_name("output").long("output").short("o")
             .takes_value(true)
@@ -106,9 +116,10 @@ fn run() -> i32 {
         .get_matches();
 
     // Unwraps succeeds because validators should already have caught errors
-    let block_size: u32 = matches.value_of("blocksize").unwrap().parse().unwrap();
-    let branch_factor: u16 = matches.value_of("branch").unwrap().parse().unwrap();
+    let block_size = value_t!(matches, "blocksize", u32).unwrap();
+    let branch_factor = value_t!(matches, "branch", u16).unwrap();
     let short_output = matches.is_present("short");
+    let hash_enum = value_t!(matches, "hash", HashFunctions).unwrap();
     let mut file_list = Vec::<String>::new();
     for file_str in matches.values_of("FILES").unwrap() {
         let file_path = Path::new(file_str);
