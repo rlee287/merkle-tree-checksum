@@ -17,7 +17,7 @@ pub use merkle_utils::{node_count, BlockRange, HashRange};
 
 pub fn merkle_hash_file<T>(file: File, block_size: u32, branch: u16,
         hash_queue: Sender<HashRange>)
-         -> GenericArray<u8, T::OutputSize>
+         -> Box<[u8]>
 where
     T: Digest
 {
@@ -34,7 +34,7 @@ where
     merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
         block_range, branch, &mut hash_out, &hash_queue);
     drop(hash_queue);
-    return hash_out;
+    return hash_out.to_vec().into_boxed_slice();
 }
 
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
@@ -105,9 +105,7 @@ where
         };
         let block_range = BlockRange::new(start_byte, end_byte_block, true);
         let byte_range = BlockRange::new(start_byte, end_byte_file, true);
-        let mut hash_as_vec = Vec::<u8>::new();
-        hash_as_vec.extend(hash_result);
-        let block_hash_result = HashRange::new(block_range, byte_range,hash_as_vec.into_boxed_slice());
+        let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
         hash_queue.send(block_hash_result).unwrap();
     }
 }

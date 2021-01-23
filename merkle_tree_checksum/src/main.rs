@@ -224,7 +224,8 @@ fn run() -> i32 {
         }
         let final_hash = thread_handle.join().unwrap();
         if short_output {
-            writeln!(write_handle, "{:x}  {}", final_hash, file_name).unwrap();
+            writeln!(write_handle, "{}  {}",
+                arr_to_hex_str(final_hash.as_ref()), file_name).unwrap();
         }
         write_handle.flush().unwrap();
         if !matches.is_present("quiet") {
