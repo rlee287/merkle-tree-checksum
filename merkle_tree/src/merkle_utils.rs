@@ -65,7 +65,7 @@ impl fmt::Display for BlockRange {
             false => ')'
         };
         // Emit [] for including end, and [) for excluding end
-        write!(f, "[{:#08x}-{:#08x}{}", self.start, self.end, end_char)
+        write!(f, "[{:#010x}-{:#010x}{}", self.start, self.end, end_char)
     }
 }
 
