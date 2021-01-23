@@ -16,7 +16,7 @@ use merkle_utils::*;
 pub use merkle_utils::{node_count, BlockRange, HashRange};
 
 pub fn merkle_hash_file<T>(file: File, block_size: u32, branch: u16,
-        hash_queue: Sender<HashRange<T::OutputSize>>)
+        hash_queue: Sender<HashRange>)
          -> GenericArray<u8, T::OutputSize>
 where
     T: Digest
@@ -43,7 +43,7 @@ fn merkle_tree_file_helper<T>(file: &mut BufReader<File>,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
         hash_out: &mut GenericArray<u8, T::OutputSize>,
-        hash_queue: &Sender<HashRange<T::OutputSize>>)
+        hash_queue: &Sender<HashRange>)
 where
     T: Digest
 {
@@ -105,7 +105,9 @@ where
         };
         let block_range = BlockRange::new(start_byte, end_byte_block, true);
         let byte_range = BlockRange::new(start_byte, end_byte_file, true);
-        let block_hash_result = HashRange::new(block_range, byte_range,hash_result);
+        let mut hash_as_vec = Vec::<u8>::new();
+        hash_as_vec.extend(hash_result);
+        let block_hash_result = HashRange::new(block_range, byte_range,hash_as_vec.into_boxed_slice());
         hash_queue.send(block_hash_result).unwrap();
     }
 }

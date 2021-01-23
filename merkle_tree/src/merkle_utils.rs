@@ -1,4 +1,3 @@
-use generic_array::{GenericArray, ArrayLength};
 use std::fmt;
 use std::io::{Seek, SeekFrom};
 
@@ -70,22 +69,16 @@ impl fmt::Display for BlockRange {
     }
 }
 
-pub struct HashRange<N> 
-where
-    N: ArrayLength<u8>
-{
+pub struct HashRange {
     pub block_range: BlockRange,
     pub byte_range: BlockRange,
-    pub hash_result: GenericArray<u8, N>
+    pub hash_result: Box<[u8]>
 }
-impl<N> HashRange<N>
-where
-    N: ArrayLength<u8>
-{
+impl HashRange {
     pub fn new(block_range: BlockRange,
             byte_range: BlockRange,
-            hash_result: GenericArray<u8, N>) -> HashRange<N> {
-        HashRange::<N> {block_range: block_range,
+            hash_result: Box<[u8]>) -> HashRange {
+        HashRange {block_range: block_range,
                 byte_range: byte_range,
                 hash_result: hash_result}
     }

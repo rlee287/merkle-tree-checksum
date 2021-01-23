@@ -18,8 +18,6 @@ use std::io::{self, Write, BufWriter};
 use std::path::Path;
 use walkdir::WalkDir;
 
-use sha2::Digest;
-use sha2::digest::generic_array::{GenericArray, ArrayLength};
 use sha2::Sha256;
 
 use clap::{App, Arg};
@@ -56,10 +54,7 @@ fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
 }
 
 
-pub fn arr_to_hex_str<N>(arr: &GenericArray<u8, N>) -> String
-where
-    N: ArrayLength<u8>
-{
+pub fn arr_to_hex_str(arr: &[u8]) -> String {
     let mut return_str: String = "".to_string();
     for byte_val in arr {
         write!(return_str, "{:02x}", byte_val).unwrap();
@@ -208,7 +203,7 @@ fn run() -> i32 {
             pb.tick();
         }
 
-        let (tx, rx) = channel::<merkle_tree::HashRange<<Sha256 as Digest>::OutputSize>>();
+        let (tx, rx) = channel::<merkle_tree::HashRange>();
         let thread_handle = thread::Builder::new()
             .name(file_name.to_owned())
             .spawn(move || {
