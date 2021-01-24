@@ -18,7 +18,7 @@ use std::io::{self, Write, BufWriter};
 use std::path::Path;
 use walkdir::WalkDir;
 
-use sha2::Sha256;
+use sha2::{Sha224, Sha256, Sha384, Sha512};
 
 use clap::{App, Arg};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -203,11 +203,17 @@ fn run() -> i32 {
             pb.tick();
         }
 
+        let merkle_tree_thunk = match hash_enum {
+            HashFunctions::Sha224 => merkle_tree::merkle_hash_file::<Sha224>,
+            HashFunctions::Sha256 => merkle_tree::merkle_hash_file::<Sha256>,
+            HashFunctions::Sha384 => merkle_tree::merkle_hash_file::<Sha384>,
+            HashFunctions::Sha512 => merkle_tree::merkle_hash_file::<Sha512>,
+        };
         let (tx, rx) = channel::<merkle_tree::HashRange>();
         let thread_handle = thread::Builder::new()
             .name(file_name.to_owned())
             .spawn(move || {
-                merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, tx)
+                merkle_tree_thunk(file_obj, block_size, branch_factor, tx)
             })
             .unwrap();
         for block_hash in rx.into_iter() {
