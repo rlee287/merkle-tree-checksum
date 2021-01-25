@@ -3,10 +3,15 @@ extern crate merkle_tree;
 #[macro_use]
 extern crate clap;
 
+mod utils;
+
 use std::convert::AsMut;
 use std::iter::FromIterator;
 use std::cmp::min;
 use std::env::args;
+use std::fmt::Write as FmtWrite;
+use std::thread;
+use std::sync::mpsc::channel;
 
 use chrono::Local;
 
@@ -15,19 +20,21 @@ use std::io::{self, Write, BufWriter};
 use std::path::Path;
 use walkdir::WalkDir;
 
-use sha2::Sha256;
+use utils::Crc32;
+use sha2::{Sha224, Sha256, Sha384, Sha512};
 
 use clap::{App, Arg};
 use indicatif::{ProgressBar, ProgressStyle};
 
-const HASH_LIST: &[&str] = &["sha224", "sha256", "sha384", "sha512"];
-
-struct ProgressBarAsIncrementable {
-    pb: ProgressBar
-}
-impl merkle_tree::Incrementable for ProgressBarAsIncrementable {
-    fn incr(&mut self) {
-        self.pb.inc(1);
+arg_enum!{
+    #[derive(PartialEq, Eq, Debug)]
+    #[allow(non_camel_case_types)]
+    enum HashFunctions {
+        crc32,
+        sha224,
+        sha256,
+        sha384,
+        sha512
     }
 }
 
@@ -51,6 +58,15 @@ fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     }
 }
 
+
+pub fn arr_to_hex_str(arr: &[u8]) -> String {
+    let mut return_str: String = "".to_string();
+    for byte_val in arr {
+        write!(return_str, "{:02x}", byte_val).unwrap();
+    }
+    return return_str;
+}
+
 fn main() {
     let status_code = run();
     std::process::exit(status_code);
@@ -63,7 +79,8 @@ fn run() -> i32 {
         .about(crate_description!())
         .arg(Arg::with_name("hash").long("hash-function").short("f")
             .takes_value(true)
-            .default_value("sha256").possible_values(HASH_LIST)
+            .default_value("sha256").possible_values(&HashFunctions::variants())
+            .case_insensitive(true)
             .help("Hash function to use"))
         .arg(Arg::with_name("branch").long("branch-factor").short("b")
             .takes_value(true).default_value("4")
@@ -86,6 +103,7 @@ fn run() -> i32 {
             })
             .help("Block size to hash over, in bytes"))
         .arg(Arg::with_name("quiet").long("quiet").short("q")
+            //.required_unless("output")
             .help("Hide the progress bar"))
         .arg(Arg::with_name("output").long("output").short("o")
             .takes_value(true)
@@ -98,9 +116,10 @@ fn run() -> i32 {
         .get_matches();
 
     // Unwraps succeeds because validators should already have caught errors
-    let block_size: u32 = matches.value_of("blocksize").unwrap().parse().unwrap();
-    let branch_factor: u16 = matches.value_of("branch").unwrap().parse().unwrap();
+    let block_size = value_t!(matches, "blocksize", u32).unwrap();
+    let branch_factor = value_t!(matches, "branch", u16).unwrap();
     let short_output = matches.is_present("short");
+    let hash_enum = value_t!(matches, "hash", HashFunctions).unwrap();
     let mut file_list = Vec::<String>::new();
     for file_str in matches.values_of("FILES").unwrap() {
         let file_path = Path::new(file_str);
@@ -152,7 +171,26 @@ fn run() -> i32 {
     writeln!(write_handle, "Started {}", Local::now().to_rfc2822()).unwrap();
     write_handle.flush().unwrap();
 
-    for file_name in file_list {
+    if !short_output {
+        writeln!(write_handle, "Files:").unwrap();
+        for (index, file_name) in file_list.iter().enumerate() {
+            writeln!(write_handle, "{} {}", index, file_name).unwrap();
+        }
+    }
+    writeln!(write_handle, "Hashes:").unwrap();
+    write_handle.flush().unwrap();
+
+    let merkle_tree_thunk = match hash_enum {
+        HashFunctions::crc32 => merkle_tree::merkle_hash_file::<Crc32>,
+        HashFunctions::sha224 => merkle_tree::merkle_hash_file::<Sha224>,
+        HashFunctions::sha256 => merkle_tree::merkle_hash_file::<Sha256>,
+        HashFunctions::sha384 => merkle_tree::merkle_hash_file::<Sha384>,
+        HashFunctions::sha512 => merkle_tree::merkle_hash_file::<Sha512>,
+    };
+    if hash_enum == HashFunctions::crc32 {
+        eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
+    }
+    for (file_index, file_name) in file_list.iter().enumerate() {
         let file_obj = match File::open(file_name.to_owned()) {
             Ok(file) => file,
             Err(err) => {
@@ -179,15 +217,30 @@ fn run() -> i32 {
             pb.set_draw_delta(min(pb_len/100, 512));
             pb.tick();
         }
-        // Clone is fine as ProgressBar is an Arc around internal state
-        let mut pb_incr = ProgressBarAsIncrementable {pb: pb.clone()};
+
+        let (tx, rx) = channel::<merkle_tree::HashRange>();
+        let thread_handle = thread::Builder::new()
+            .name(file_name.to_owned())
+            .spawn(move || {
+                merkle_tree_thunk(file_obj, block_size, branch_factor, tx)
+            })
+            .unwrap();
+        for block_hash in rx.into_iter() {
+            pb.inc(1);
+            if !short_output {
+                // {file_index} [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
+                writeln!(write_handle,"{:3} {} {} {}",
+                    file_index,
+                    block_hash.block_range,
+                    block_hash.byte_range,
+                    arr_to_hex_str(&block_hash.hash_result)).unwrap();
+            }
+            thread::yield_now();
+        }
+        let final_hash = thread_handle.join().unwrap();
         if short_output {
-            let hash_result = merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, &mut io::sink(), &mut pb_incr);
-            writeln!(write_handle, "{:x}  {}", hash_result, file_name).unwrap();
-        } else {
-            writeln!(write_handle, "File {}", file_name).unwrap();
-            // Final entry is the final hash
-            merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, write_handle, &mut pb_incr);
+            writeln!(write_handle, "{}  {}",
+                arr_to_hex_str(final_hash.as_ref()), file_name).unwrap();
         }
         write_handle.flush().unwrap();
         if !matches.is_present("quiet") {

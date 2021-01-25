@@ -7,14 +7,17 @@ use std::io::BufReader;
 use std::fs::File;
 use std::cmp::max;
 use std::convert::TryInto;
+use std::sync::mpsc::Sender;
+
 use digest::Digest;
 use generic_array::{GenericArray};
+
 use merkle_utils::*;
-pub use merkle_utils::{node_count, Incrementable};
+pub use merkle_utils::{node_count, BlockRange, HashRange};
 
 pub fn merkle_hash_file<T>(file: File, block_size: u32, branch: u16,
-        write_out: &mut dyn Write, progress_tracker: &mut dyn Incrementable)
-         -> GenericArray<u8, T::OutputSize>
+        hash_queue: Sender<HashRange>)
+         -> Box<[u8]>
 where
     T: Digest
 {
@@ -29,8 +32,9 @@ where
     let mut hash_out = HashResult::<T>::default();
     let block_range = BlockRange::new(0, effective_block_count, false);
     merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
-        block_range, branch, &mut hash_out, write_out, progress_tracker);
-    return hash_out;
+        block_range, branch, &mut hash_out, &hash_queue);
+    drop(hash_queue);
+    return hash_out.to_vec().into_boxed_slice();
 }
 
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
@@ -39,7 +43,7 @@ fn merkle_tree_file_helper<T>(file: &mut BufReader<File>,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
         hash_out: &mut GenericArray<u8, T::OutputSize>,
-        write_out: &mut dyn Write, progress_tracker: &mut dyn Incrementable)
+        hash_queue: &Sender<HashRange>)
 where
     T: Digest
 {
@@ -82,7 +86,7 @@ where
                     let slice_start = block_range.start + incr_count * block_increment;
                     let slice_end = block_range.start + (incr_count + 1) * block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end, false);
-                    merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, &mut hash_vector[incr_index], write_out, progress_tracker);
+                    merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, &mut hash_vector[incr_index], hash_queue);
                 }
                 let mut combined_input = hash_vector.concat();
                 // Prepend 0x01
@@ -90,7 +94,8 @@ where
                 T::digest(combined_input.as_slice())
             }
         };
-        // Byte range start is always theoretical
+        hash_out.copy_from_slice(hash_result.as_slice());
+        // Byte range start is theoretical from tree structure
         // Byte range end may differ due to EOF
         let start_byte = block_range.start*(block_size as u64);
         let end_byte_block = block_range.end*(block_size as u64)-1;
@@ -100,11 +105,7 @@ where
         };
         let block_range = BlockRange::new(start_byte, end_byte_block, true);
         let byte_range = BlockRange::new(start_byte, end_byte_file, true);
-        progress_tracker.incr();
-        // [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
-        // [0x{:08x}-0x{:08x}] [0x{:08x}-0x{:08x}] {}
-        writeln!(write_out,"{} {} {}",
-            block_range, byte_range, arr_to_hex_str(&hash_result)).unwrap();
-        hash_out.copy_from_slice(hash_result.as_slice());
+        let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
+        hash_queue.send(block_hash_result).unwrap();
     }
 }
