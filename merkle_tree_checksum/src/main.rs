@@ -3,6 +3,8 @@ extern crate merkle_tree;
 #[macro_use]
 extern crate clap;
 
+mod utils;
+
 use std::convert::AsMut;
 use std::iter::FromIterator;
 use std::cmp::min;
@@ -18,20 +20,21 @@ use std::io::{self, Write, BufWriter};
 use std::path::Path;
 use walkdir::WalkDir;
 
-use sha2::Digest;
-use sha2::digest::generic_array::{GenericArray, ArrayLength};
-use sha2::Sha256;
+use utils::Crc32;
+use sha2::{Sha224, Sha256, Sha384, Sha512};
 
 use clap::{App, Arg};
 use indicatif::{ProgressBar, ProgressStyle};
 
 arg_enum!{
     #[derive(PartialEq, Eq, Debug)]
+    #[allow(non_camel_case_types)]
     enum HashFunctions {
-        Sha224,
-        Sha256,
-        Sha384,
-        Sha512
+        crc32,
+        sha224,
+        sha256,
+        sha384,
+        sha512
     }
 }
 
@@ -56,10 +59,7 @@ fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
 }
 
 
-pub fn arr_to_hex_str<N>(arr: &GenericArray<u8, N>) -> String
-where
-    N: ArrayLength<u8>
-{
+pub fn arr_to_hex_str(arr: &[u8]) -> String {
     let mut return_str: String = "".to_string();
     for byte_val in arr {
         write!(return_str, "{:02x}", byte_val).unwrap();
@@ -180,6 +180,16 @@ fn run() -> i32 {
     writeln!(write_handle, "Hashes:").unwrap();
     write_handle.flush().unwrap();
 
+    let merkle_tree_thunk = match hash_enum {
+        HashFunctions::crc32 => merkle_tree::merkle_hash_file::<Crc32>,
+        HashFunctions::sha224 => merkle_tree::merkle_hash_file::<Sha224>,
+        HashFunctions::sha256 => merkle_tree::merkle_hash_file::<Sha256>,
+        HashFunctions::sha384 => merkle_tree::merkle_hash_file::<Sha384>,
+        HashFunctions::sha512 => merkle_tree::merkle_hash_file::<Sha512>,
+    };
+    if hash_enum == HashFunctions::crc32 {
+        eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
+    }
     for (file_index, file_name) in file_list.iter().enumerate() {
         let file_obj = match File::open(file_name.to_owned()) {
             Ok(file) => file,
@@ -208,11 +218,11 @@ fn run() -> i32 {
             pb.tick();
         }
 
-        let (tx, rx) = channel::<merkle_tree::HashRange<<Sha256 as Digest>::OutputSize>>();
+        let (tx, rx) = channel::<merkle_tree::HashRange>();
         let thread_handle = thread::Builder::new()
             .name(file_name.to_owned())
             .spawn(move || {
-                merkle_tree::merkle_hash_file::<Sha256>(file_obj, block_size, branch_factor, tx)
+                merkle_tree_thunk(file_obj, block_size, branch_factor, tx)
             })
             .unwrap();
         for block_hash in rx.into_iter() {
@@ -229,7 +239,8 @@ fn run() -> i32 {
         }
         let final_hash = thread_handle.join().unwrap();
         if short_output {
-            writeln!(write_handle, "{:x}  {}", final_hash, file_name).unwrap();
+            writeln!(write_handle, "{}  {}",
+                arr_to_hex_str(final_hash.as_ref()), file_name).unwrap();
         }
         write_handle.flush().unwrap();
         if !matches.is_present("quiet") {
