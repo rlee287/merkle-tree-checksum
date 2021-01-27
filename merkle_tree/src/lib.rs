@@ -21,18 +21,15 @@ pub fn merkle_hash_file<T>(file: File, block_size: u32, branch: u16,
 where
     T: Digest
 {
-    // TODO: error handling
-    type HashResult<T> = GenericArray<u8, <T as Digest>::OutputSize>;
     let file_len = file.metadata().unwrap().len();
     let block_count = max(1, ceil_div(file_len, block_size.into()));
     let effective_block_count = exp_ceil_log(block_count, branch);
 
     let mut file_buf = BufReader::with_capacity(
         (block_size*(branch as u32)).try_into().unwrap(), file);
-    let mut hash_out = HashResult::<T>::default();
     let block_range = BlockRange::new(0, effective_block_count, false);
-    merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
-        block_range, branch, &mut hash_out, &hash_queue);
+    let hash_out = merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
+        block_range, branch, &hash_queue).unwrap();
     drop(hash_queue);
     return hash_out.to_vec().into_boxed_slice();
 }
@@ -42,8 +39,8 @@ where
 fn merkle_tree_file_helper<T>(file: &mut BufReader<File>,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
-        hash_out: &mut GenericArray<u8, T::OutputSize>,
         hash_queue: &Sender<HashRange>)
+        -> Option<GenericArray<u8, T::OutputSize>>
 where
     T: Digest
 {
@@ -78,15 +75,19 @@ where
                 // power-of-branch check
                 assert!(block_interval % (branch as u64) == 0);
                 let block_increment = block_interval / (branch as u64);
-                let mut hash_vector: Vec::<HashResult<T>> = Vec::new();
-                hash_vector.resize(branch.into(), HashResult::<T>::default());
+                let mut hash_vector: Vec::<HashResult<T>> = Vec::with_capacity(branch.into());
                 // Compute the hash for each branch
                 for incr_count in 0..(branch as u64) {
-                    let incr_index: usize = incr_count.try_into().unwrap();
                     let slice_start = block_range.start + incr_count * block_increment;
                     let slice_end = block_range.start + (incr_count + 1) * block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end, false);
-                    merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, &mut hash_vector[incr_index], hash_queue);
+                    let subhash = merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, hash_queue);
+                    if subhash.is_some() {
+                        hash_vector.push(subhash.unwrap());
+                    } else {
+                        // None -> out of range, and so will rest
+                        break;
+                    }
                 }
                 let mut combined_input = hash_vector.concat();
                 // Prepend 0x01
@@ -94,7 +95,6 @@ where
                 T::digest(combined_input.as_slice())
             }
         };
-        hash_out.copy_from_slice(hash_result.as_slice());
         // Byte range start is theoretical from tree structure
         // Byte range end may differ due to EOF
         let start_byte = block_range.start*(block_size as u64);
@@ -107,5 +107,8 @@ where
         let byte_range = BlockRange::new(start_byte, end_byte_file, true);
         let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
         hash_queue.send(block_hash_result).unwrap();
+        return Some(hash_result);
+    } else {
+        return None;
     }
 }
