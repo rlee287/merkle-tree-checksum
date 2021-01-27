@@ -140,7 +140,7 @@ fn run() -> i32 {
         }
     }
 
-    let mut out_file: Box<dyn Write> = match matches.value_of("output") {
+    let mut out_file: Box<dyn Write + Send> = match matches.value_of("output") {
         None => Box::new(io::stdout()),
         Some(name) => match File::create(name) {
             Ok(file) => Box::new(BufWriter::new(file)),
@@ -151,7 +151,7 @@ fn run() -> i32 {
             }
         }
     };
-    let write_handle: &mut dyn Write = out_file.as_mut();
+    let write_handle = out_file.as_mut();
     writeln!(write_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
     write!(write_handle, "Arguments: ").unwrap();
     // Scope the argument iteration variables

@@ -69,6 +69,7 @@ impl fmt::Display for BlockRange {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct HashRange {
     pub block_range: BlockRange,
     pub byte_range: BlockRange,
