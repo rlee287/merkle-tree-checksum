@@ -113,15 +113,7 @@ fn run() -> i32 {
             .long_help("Write only the summary hash to the output. This will make identifying corrupted locations impossible."))
         .arg(Arg::with_name("FILES").required(true)
             .multiple(true).last(true))
-        .get_matches_safe();
-
-    // Exit with 1 on error (help/version), like get_matches does
-    // Instead of exiting, ensure everything is unwound by returning to main
-    if matches.is_err() {
-        return 1;
-    }
-    // Shadow the original matches and unwrap (now guaranteed to be safe)
-    let matches = matches.unwrap();
+        .get_matches();
 
     // Unwraps succeeds because validators should already have caught errors
     let block_size = value_t!(matches, "blocksize", u32).unwrap();
