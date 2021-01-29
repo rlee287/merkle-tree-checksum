@@ -17,7 +17,7 @@ use chrono::Local;
 
 use std::fs::File;
 use std::io::{self, Write, BufWriter};
-use std::path::Path;
+use std::path::{Path,PathBuf};
 use walkdir::WalkDir;
 
 use utils::Crc32;
@@ -113,25 +113,33 @@ fn run() -> i32 {
             .long_help("Write only the summary hash to the output. This will make identifying corrupted locations impossible."))
         .arg(Arg::with_name("FILES").required(true)
             .multiple(true).last(true))
-        .get_matches();
+        .get_matches_safe();
+
+    // Exit with 1 on error (help/version), like get_matches does
+    // Instead of exiting, ensure everything is unwound by returning to main
+    if matches.is_err() {
+        return 1;
+    }
+    // Shadow the original matches and unwrap (now guaranteed to be safe)
+    let matches = matches.unwrap();
 
     // Unwraps succeeds because validators should already have caught errors
     let block_size = value_t!(matches, "blocksize", u32).unwrap();
     let branch_factor = value_t!(matches, "branch", u16).unwrap();
     let short_output = matches.is_present("short");
     let hash_enum = value_t!(matches, "hash", HashFunctions).unwrap();
-    let mut file_list = Vec::<String>::new();
+    let mut file_list = Vec::<PathBuf>::new();
     for file_str in matches.values_of("FILES").unwrap() {
         let file_path = Path::new(file_str);
         if file_path.is_file() {
-            file_list.push(file_str.to_owned());
+            file_list.push(file_path.to_path_buf());
         } else if file_path.is_dir() {
             // Walk directory to find all the files in it
             for entry in WalkDir::new(file_path).min_depth(1) {
                 let entry_unwrap = entry.unwrap();
                 let entry_path = entry_unwrap.path();
                 if entry_path.is_file() {
-                    file_list.push(entry_path.to_str().unwrap().to_owned());
+                    file_list.push(entry_path.to_path_buf());
                 }
             }
         } else {
@@ -174,7 +182,8 @@ fn run() -> i32 {
     if !short_output {
         writeln!(write_handle, "Files:").unwrap();
         for (index, file_name) in file_list.iter().enumerate() {
-            writeln!(write_handle, "{} {}", index, file_name).unwrap();
+            writeln!(write_handle, "{} {}",
+                    index, file_name.to_str().unwrap()).unwrap();
         }
     }
     writeln!(write_handle, "Hashes:").unwrap();
@@ -195,7 +204,7 @@ fn run() -> i32 {
             Ok(file) => file,
             Err(err) => {
                 eprintln!("Error opening file {} for reading: {}",
-                    file_name, err);
+                    file_name.to_str().unwrap(), err);
                 return 1
             }
         };
@@ -220,7 +229,7 @@ fn run() -> i32 {
 
         let (tx, rx) = channel::<merkle_tree::HashRange>();
         let thread_handle = thread::Builder::new()
-            .name(file_name.to_owned())
+            .name(String::from(file_name.to_str().unwrap()))
             .spawn(move || {
                 merkle_tree_thunk(file_obj, block_size, branch_factor, tx)
             })
@@ -240,7 +249,8 @@ fn run() -> i32 {
         let final_hash = thread_handle.join().unwrap();
         if short_output {
             writeln!(write_handle, "{}  {}",
-                arr_to_hex_str(final_hash.as_ref()), file_name).unwrap();
+                arr_to_hex_str(final_hash.as_ref()),
+                file_name.to_str().unwrap()).unwrap();
         }
         write_handle.flush().unwrap();
         if !matches.is_present("quiet") {
