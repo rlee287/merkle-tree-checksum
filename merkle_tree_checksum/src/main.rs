@@ -164,11 +164,8 @@ fn run() -> i32 {
             // Write the binary name (skipping directory parts)
             write!(write_handle, "{}", binary_name);
         }
-        for (index,arg) in arg_iter
-                .take_while(|arg_val| {arg_val != "--"}).enumerate() {
-            if index != 0 {
-                write!(write_handle, " ").unwrap();
-            }
+        for arg in arg_iter.take_while(|arg_val| {arg_val != "--"}) {
+            write!(write_handle, " ").unwrap();
             write!(write_handle, "{}", arg).unwrap();
         }
         write!(write_handle, "\n").unwrap();
