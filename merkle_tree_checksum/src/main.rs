@@ -157,8 +157,13 @@ fn run() -> i32 {
     // Scope the argument iteration variables
     {
         let mut arg_iter = args();
-        // Skip the first element (binary name)
-        arg_iter.next();
+        {
+            let argv_0 = arg_iter.next().unwrap();
+            let binary_name = Path::new(argv_0.as_str())
+                    .file_name().unwrap().to_str().unwrap();
+            // Write the binary name (skipping directory parts)
+            write!(write_handle, "{}", binary_name);
+        }
         for (index,arg) in arg_iter
                 .take_while(|arg_val| {arg_val != "--"}).enumerate() {
             if index != 0 {
