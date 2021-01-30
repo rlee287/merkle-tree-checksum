@@ -162,7 +162,7 @@ fn run() -> i32 {
             let binary_name = Path::new(argv_0.as_str())
                     .file_name().unwrap().to_str().unwrap();
             // Write the binary name (skipping directory parts)
-            write!(write_handle, "{}", binary_name);
+            write!(write_handle, "{}", binary_name).unwrap();
         }
         for arg in arg_iter.take_while(|arg_val| {arg_val != "--"}) {
             write!(write_handle, " ").unwrap();
