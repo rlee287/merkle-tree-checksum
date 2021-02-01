@@ -23,11 +23,11 @@ use walkdir::WalkDir;
 use utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512};
 
-use clap::{App, Arg};
+use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle};
 
 arg_enum!{
-    #[derive(PartialEq, Eq, Debug)]
+    #[derive(PartialEq, Eq, Debug, Clone, Copy)]
     #[allow(non_camel_case_types)]
     enum HashFunctions {
         crc32,
@@ -36,6 +36,15 @@ arg_enum!{
         sha384,
         sha512
     }
+}
+
+const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
+const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+enum HashCommand {
+    GenerateHash,
+    VerifyHash
 }
 
 fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
@@ -58,7 +67,6 @@ fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     }
 }
 
-
 pub fn arr_to_hex_str(arr: &[u8]) -> String {
     let mut return_str: String = "".to_string();
     for byte_val in arr {
@@ -67,16 +75,37 @@ pub fn arr_to_hex_str(arr: &[u8]) -> String {
     return return_str;
 }
 
+fn get_file_list(matches: &ArgMatches) -> Result<Vec<PathBuf>,String> {
+    let mut file_list = Vec::<PathBuf>::new();
+    for file_str in matches.values_of("FILES").unwrap() {
+        let file_path = Path::new(file_str);
+        if file_path.is_file() {
+            file_list.push(file_path.to_path_buf());
+        } else if file_path.is_dir() {
+            // Walk directory to find all the files in it
+            for entry in WalkDir::new(file_path).min_depth(1) {
+                let entry_unwrap = entry.unwrap();
+                let entry_path = entry_unwrap.path();
+                if entry_path.is_file() {
+                    file_list.push(entry_path.to_path_buf());
+                }
+            }
+        } else {
+            return Err(file_str.to_owned());
+        }
+    }
+    return Ok(file_list);
+}
+
 fn main() {
     let status_code = run();
     std::process::exit(status_code);
 }
 
 fn run() -> i32 {
-    let matches = App::new(crate_name!())
-        .version(crate_version!())
-        .author(crate_authors!())
-        .about(crate_description!())
+    let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
+        .about("Generates Merkle tree hashes")
+        .setting(AppSettings::UnifiedHelpMessage)
         .arg(Arg::with_name("hash").long("hash-function").short("f")
             .takes_value(true)
             .default_value("sha256").possible_values(&HashFunctions::variants())
@@ -102,9 +131,6 @@ fn run() -> i32 {
                 }
             })
             .help("Block size to hash over, in bytes"))
-        .arg(Arg::with_name("quiet").long("quiet").short("q")
-            //.required_unless("output")
-            .help("Hide the progress bar"))
         .arg(Arg::with_name("output").long("output").short("o")
             .takes_value(true)
             .help("Output file (default stdout)"))
@@ -112,35 +138,72 @@ fn run() -> i32 {
             .help("Write only the summary hash")
             .long_help("Write only the summary hash to the output. This will make identifying corrupted locations impossible."))
         .arg(Arg::with_name("FILES").required(true)
-            .multiple(true).last(true))
-        .get_matches();
+            .multiple(true).last(true));
+    let check_hash_command = SubCommand::with_name(VERIFY_HASH_CMD_NAME)
+        .about("Verify Merkle tree hashes")
+        .setting(AppSettings::UnifiedHelpMessage)
+        .arg(Arg::with_name("output").long("output").short("o")
+            .takes_value(true)
+            .help("Output file (default stdout)"))
+        .arg(Arg::with_name("FILE").required(true)
+            .help("File containing the hashes to check"));
 
-    // Unwraps succeeds because validators should already have caught errors
-    let block_size = value_t!(matches, "blocksize", u32).unwrap();
-    let branch_factor = value_t!(matches, "branch", u16).unwrap();
-    let short_output = matches.is_present("short");
-    let hash_enum = value_t!(matches, "hash", HashFunctions).unwrap();
-    let mut file_list = Vec::<PathBuf>::new();
-    for file_str in matches.values_of("FILES").unwrap() {
-        let file_path = Path::new(file_str);
-        if file_path.is_file() {
-            file_list.push(file_path.to_path_buf());
-        } else if file_path.is_dir() {
-            // Walk directory to find all the files in it
-            for entry in WalkDir::new(file_path).min_depth(1) {
-                let entry_unwrap = entry.unwrap();
-                let entry_path = entry_unwrap.path();
-                if entry_path.is_file() {
-                    file_list.push(entry_path.to_path_buf());
-                }
-            }
-        } else {
-            eprintln!("Error: file {} does not exist", file_str);
-            return 1;
+    let clap_app = App::new(crate_name!())
+        .version(crate_version!())
+        .author(crate_authors!())
+        .about(crate_description!())
+        .setting(AppSettings::SubcommandRequired)
+        .setting(AppSettings::VersionlessSubcommands)
+        .setting(AppSettings::UnifiedHelpMessage)
+        .arg(Arg::with_name("quiet").long("quiet").short("q")
+            .help("Hide the progress bar"))
+        .subcommand(gen_hash_command)
+        .subcommand(check_hash_command);
+
+    let matches = clap_app.get_matches();
+
+    let (cmd_chosen, cmd_matches): (HashCommand, ArgMatches)
+            = match matches.subcommand() {
+        (GENERATE_HASH_CMD_NAME, Some(gencmd_matches)) => 
+                (HashCommand::GenerateHash, gencmd_matches.clone()),
+        (VERIFY_HASH_CMD_NAME, Some(verify_matches)) =>
+                (HashCommand::VerifyHash, verify_matches.clone()),
+        (_, _) => panic!("Invalid subcommand detected")
+    };
+
+    let (file_list_result, block_size, branch_factor, short_output, hash_enum):
+            (Result<Vec<PathBuf>, String>, u32, u16, bool, HashFunctions)
+            = match cmd_chosen {
+        HashCommand::GenerateHash => {
+            // Validators should already have caught errors
+            (
+                get_file_list(&cmd_matches),
+                value_t!(cmd_matches, "blocksize", u32).unwrap(),
+                value_t!(cmd_matches, "branch", u16).unwrap(),
+                cmd_matches.is_present("short"),
+                value_t!(cmd_matches, "hash", HashFunctions).unwrap()
+            )
+        },
+        HashCommand::VerifyHash => {
+            // TODO: parse input file to get options
+            (
+                todo!(),
+                todo!(),
+                todo!(),
+                todo!(),
+                todo!()
+            )
         }
+    };
+    if file_list_result.is_err() {
+        eprintln!("Error: file {} does not exist",
+                file_list_result.unwrap_err());
+        return 1;
     }
+    let file_list = file_list_result.unwrap();
 
-    let mut out_file: Box<dyn Write + Send> = match matches.value_of("output") {
+    // Further changes needed here, depends on verify command stuff
+    let mut out_file: Box<dyn Write + Send> = match cmd_matches.value_of("output") {
         None => Box::new(io::stdout()),
         Some(name) => match File::create(name) {
             Ok(file) => Box::new(BufWriter::new(file)),
@@ -151,37 +214,39 @@ fn run() -> i32 {
             }
         }
     };
-    let write_handle = out_file.as_mut();
-    writeln!(write_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
-    write!(write_handle, "Arguments: ").unwrap();
-    // Scope the argument iteration variables
-    {
-        let mut arg_iter = args();
-        {
-            let argv_0 = arg_iter.next().unwrap();
-            let binary_name = Path::new(argv_0.as_str())
-                    .file_name().unwrap().to_str().unwrap();
-            // Write the binary name (skipping directory parts)
-            write!(write_handle, "{}", binary_name).unwrap();
-        }
-        for arg in arg_iter.take_while(|arg_val| {arg_val != "--"}) {
-            write!(write_handle, " ").unwrap();
-            write!(write_handle, "{}", arg).unwrap();
-        }
-        write!(write_handle, "\n").unwrap();
-    }
-    writeln!(write_handle, "Started {}", Local::now().to_rfc2822()).unwrap();
-    write_handle.flush().unwrap();
 
-    if !short_output {
-        writeln!(write_handle, "Files:").unwrap();
-        for (index, file_name) in file_list.iter().enumerate() {
-            writeln!(write_handle, "{} {}",
-                    index, file_name.to_str().unwrap()).unwrap();
+    if cmd_chosen == HashCommand::GenerateHash {
+        let write_handle = out_file.as_mut();
+        writeln!(write_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
+        write!(write_handle, "Arguments: ").unwrap();
+        // Scope the argument iteration variables
+        {
+            let mut arg_iter = args();
+            {
+                let argv_0 = arg_iter.next().unwrap();
+                let binary_name = Path::new(argv_0.as_str())
+                        .file_name().unwrap().to_str().unwrap();
+                // Write the binary name (skipping directory parts)
+                write!(write_handle, "{}", binary_name).unwrap();
+            }
+            for arg in arg_iter.take_while(|arg_val| {arg_val != "--"}) {
+                write!(write_handle, " {}", arg).unwrap();
+            }
+            write!(write_handle, "\n").unwrap();
         }
+        writeln!(write_handle, "Started {}", Local::now().to_rfc2822()).unwrap();
+        write_handle.flush().unwrap();
+
+        if !short_output {
+            writeln!(write_handle, "Files:").unwrap();
+            for (index, file_name) in file_list.iter().enumerate() {
+                writeln!(write_handle, "{} {}",
+                        index, file_name.to_str().unwrap()).unwrap();
+            }
+        }
+        writeln!(write_handle, "Hashes:").unwrap();
+        write_handle.flush().unwrap();
     }
-    writeln!(write_handle, "Hashes:").unwrap();
-    write_handle.flush().unwrap();
 
     let merkle_tree_thunk = match hash_enum {
         HashFunctions::crc32 => merkle_tree::merkle_hash_file::<Crc32>,
@@ -190,9 +255,14 @@ fn run() -> i32 {
         HashFunctions::sha384 => merkle_tree::merkle_hash_file::<Sha384>,
         HashFunctions::sha512 => merkle_tree::merkle_hash_file::<Sha512>,
     };
-    if hash_enum == HashFunctions::crc32 {
+
+    if hash_enum == HashFunctions::crc32
+            && cmd_chosen == HashCommand::GenerateHash {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
+
+    // TODO: Different actions when verifying a hash file
+    let write_handle = out_file.as_mut();
     for (file_index, file_name) in file_list.iter().enumerate() {
         let file_obj = match File::open(file_name.to_owned()) {
             Ok(file) => file,
