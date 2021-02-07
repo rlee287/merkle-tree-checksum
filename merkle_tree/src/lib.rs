@@ -5,7 +5,7 @@ mod merkle_utils;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::fs::File;
-use std::cmp::max;
+use std::cmp::min;
 use std::convert::TryInto;
 use std::sync::mpsc::Sender;
 
@@ -22,14 +22,18 @@ where
     T: Digest
 {
     let file_len = file.metadata().unwrap().len();
-    let block_count = max(1, ceil_div(file_len, block_size.into()));
+    let block_count = match ceil_div(file_len, block_size.into()) {
+        0 => 1,
+        n => n
+    };
     let effective_block_count = exp_ceil_log(block_count, branch);
 
+    let buf_size: u32 = min(block_size*(branch as u32), 16*1024*1024);
     let mut file_buf = BufReader::with_capacity(
-        (block_size*(branch as u32)).try_into().unwrap(), file);
+        buf_size.try_into().unwrap(), file);
     let block_range = BlockRange::new(0, effective_block_count, false);
-    let hash_out = merkle_tree_file_helper::<T>(&mut file_buf, block_size, block_count,
-        block_range, branch, &hash_queue).unwrap();
+    let hash_out = merkle_tree_file_helper::<T>(&mut file_buf,
+        block_size, block_count, block_range, branch, &hash_queue).unwrap();
     drop(hash_queue);
     return hash_out.to_vec().into_boxed_slice();
 }
@@ -51,7 +55,7 @@ where
 
     if block_range.start < block_count {
         let block_interval = block_range.range();
-        let hash_result = match block_interval {
+        let hash_input = match block_interval {
             1 => {
                 let mut file_vec: Vec::<u8> = Vec::new();
 
@@ -69,7 +73,7 @@ where
                 }
                 // Prepend 0x00
                 file_vec.insert(0, 0x00);
-                T::digest(file_vec.as_slice())
+                file_vec
             }
             _ => {
                 // power-of-branch check
@@ -92,9 +96,10 @@ where
                 let mut combined_input = hash_vector.concat();
                 // Prepend 0x01
                 combined_input.insert(0, 0x01);
-                T::digest(combined_input.as_slice())
+                combined_input
             }
         };
+        let hash_result = T::digest(hash_input.as_slice());
         // Byte range start is theoretical from tree structure
         // Byte range end may differ due to EOF
         let start_byte = block_range.start*(block_size as u64);
