@@ -18,10 +18,11 @@ pub(crate) fn exp_ceil_log(number: u64, base: u16) -> u64 {
     // return
     result
 }
-pub fn node_count(file_size: u64, block_size: u32, branch: u16) -> u64{
+pub fn node_count(file_size: u64, block_size: u32, branch: u16) -> u64 {
     let block_count = ceil_div(file_size, block_size as u64);
     let mut node_count = block_count;
     let mut node_at_layer_count = block_count;
+    assert!(branch >= 2);
     while node_at_layer_count > 1 {
         node_at_layer_count = ceil_div(node_at_layer_count, branch as u64);
         node_count += node_at_layer_count;
@@ -32,11 +33,11 @@ pub fn node_count(file_size: u64, block_size: u32, branch: u16) -> u64{
     }
 }
 
-pub(crate) fn current_seek_pos(file: &mut dyn Seek) -> u64 {
-    file.seek(SeekFrom::Current(0)).unwrap()
+pub(crate) fn current_seek_pos(seekable: &mut dyn Seek) -> u64 {
+    seekable.seek(SeekFrom::Current(0)).unwrap()
 }
 
-#[derive(Debug,Copy,Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct BlockRange {
     pub start: u64,
     pub end: u64,
@@ -69,7 +70,7 @@ impl fmt::Display for BlockRange {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HashRange {
     pub block_range: BlockRange,
     pub byte_range: BlockRange,
