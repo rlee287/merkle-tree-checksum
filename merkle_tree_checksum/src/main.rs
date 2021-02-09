@@ -3,12 +3,13 @@ extern crate merkle_tree;
 #[macro_use]
 extern crate clap;
 
+extern crate enquote;
+
 mod utils;
 
 use std::convert::AsMut;
 use std::iter::FromIterator;
 use std::cmp::min;
-use std::env::args;
 use std::fmt::Write as FmtWrite;
 use std::thread;
 use std::sync::mpsc::channel;
@@ -178,10 +179,13 @@ fn run() -> i32 {
             // Validators should already have caught errors
             (
                 get_file_list(&cmd_matches),
-                value_t!(cmd_matches, "blocksize", u32).unwrap(),
-                value_t!(cmd_matches, "branch", u16).unwrap(),
+                value_t!(cmd_matches, "blocksize", u32)
+                    .unwrap_or_else(|e| e.exit()),
+                value_t!(cmd_matches, "branch", u16)
+                    .unwrap_or_else(|e| e.exit()),
                 cmd_matches.is_present("short"),
-                value_t!(cmd_matches, "hash", HashFunctions).unwrap()
+                value_t!(cmd_matches, "hash", HashFunctions)
+                    .unwrap_or_else(|e| e.exit())
             )
         },
         HashCommand::VerifyHash => {
@@ -218,31 +222,19 @@ fn run() -> i32 {
     if cmd_chosen == HashCommand::GenerateHash {
         let write_handle = out_file.as_mut();
         writeln!(write_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
-        write!(write_handle, "Arguments: ").unwrap();
-        // Scope the argument iteration variables
-        {
-            let mut arg_iter = args();
-            {
-                let argv_0 = arg_iter.next().unwrap();
-                let binary_name = Path::new(argv_0.as_str())
-                        .file_name().unwrap().to_str().unwrap();
-                // Write the binary name (skipping directory parts)
-                write!(write_handle, "{}", binary_name).unwrap();
-            }
-            for arg in arg_iter.take_while(|arg_val| {arg_val != "--"}) {
-                write!(write_handle, " {}", arg).unwrap();
-            }
-            write!(write_handle, "\n").unwrap();
-        }
-        writeln!(write_handle, "Started {}", Local::now().to_rfc2822()).unwrap();
+        writeln!(write_handle, "# Started {}", Local::now().to_rfc2822()).unwrap();
+        writeln!(write_handle, "Hash function: {}", hash_enum).unwrap();
+        writeln!(write_handle, "Block size: {}", block_size).unwrap();
+        writeln!(write_handle, "Branching factor: {}", branch_factor).unwrap();
         write_handle.flush().unwrap();
 
         if !short_output {
             writeln!(write_handle, "Files:").unwrap();
-            for (index, file_name) in file_list.iter().enumerate() {
-                writeln!(write_handle, "{} {}",
-                        index, file_name.to_str().unwrap()).unwrap();
-            }
+            let list_str: Vec<String> = file_list.iter()
+                .map(|path| path.to_str().unwrap())
+                .map(|string| enquote::enquote('"', string))
+                .collect();
+            writeln!(write_handle, "{}", list_str.join(",\n")).unwrap();
         }
         writeln!(write_handle, "Hashes:").unwrap();
         write_handle.flush().unwrap();
@@ -264,11 +256,12 @@ fn run() -> i32 {
     // TODO: Different actions when verifying a hash file
     let write_handle = out_file.as_mut();
     for (file_index, file_name) in file_list.iter().enumerate() {
+        let filename_str = file_name.to_str().unwrap();
         let file_obj = match File::open(file_name.to_owned()) {
             Ok(file) => file,
             Err(err) => {
                 eprintln!("Error opening file {} for reading: {}",
-                    file_name.to_str().unwrap(), err);
+                    filename_str, err);
                 return 1
             }
         };
@@ -293,7 +286,7 @@ fn run() -> i32 {
 
         let (tx, rx) = channel::<merkle_tree::HashRange>();
         let thread_handle = thread::Builder::new()
-            .name(String::from(file_name.to_str().unwrap()))
+            .name(String::from(filename_str))
             .spawn(move || {
                 merkle_tree_thunk(file_obj, block_size, branch_factor, tx)
             })
@@ -314,7 +307,7 @@ fn run() -> i32 {
         if short_output {
             writeln!(write_handle, "{}  {}",
                 arr_to_hex_str(final_hash.as_ref()),
-                file_name.to_str().unwrap()).unwrap();
+                enquote::enquote('"',filename_str)).unwrap();
         }
         write_handle.flush().unwrap();
         if !matches.is_present("quiet") {

@@ -17,16 +17,22 @@ The output file starts with the program version, options, and a timestamp. After
 
 The version is printed as `merkle_tree_checksum v{version}`.
 
-The options (excluding the actual file list) are printed as passed into the command line with the prefix string `Arguments: `.
+The timestamp is printed as `# Started `, followed by a timestamp in RFC 2822 format.
 
-The timestamp is printed as `Started `, followed by a timestamp in RFC 2822 format.
-
-When in `--short` mode, the output follows the format used by tools like `sha256sum`: the root hash is printed on a line, followed by the file name.
-
-When not in `--short` mode, the file name is first declared on its own line with `File `, followed by the file name. Each hash is then printed with the following format:
+The options for computing the hash tree are then printed, with a format like below (where the items may be in any order):
 
 ```
-[{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
+Hash function: sha256
+Block size: 4
+Branching factor: 4
 ```
 
-where the blocks' start and end indicate which bytes are included in the given hash. (`tree_block_end` indicates the end of the bytes covered by the tree structure, and may be larger than `file_block_end` when the file's block count is not a power of `branch_factor`.)
+When in `--short` mode, the output follows the format used by tools like `sha256sum`: the root hash is printed on a line, followed by a quoted file name.
+
+When not in `--short` mode, the files are first listed in a separate `File: `, where each entry is a quoted file name. Each hash is then printed with the following format:
+
+```
+[file_index] [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
+```
+
+where the file index is a 0-indexed position from the file list printed earlier, and the blocks' start and end indicate which bytes are included in the given hash. (`tree_block_end` indicates the end of the bytes covered by the tree structure, and may be larger than `file_block_end` when the file's block count is not a power of `branch_factor`.)
