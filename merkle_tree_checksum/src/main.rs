@@ -179,10 +179,13 @@ fn run() -> i32 {
             // Validators should already have caught errors
             (
                 get_file_list(&cmd_matches),
-                value_t!(cmd_matches, "blocksize", u32).unwrap(),
-                value_t!(cmd_matches, "branch", u16).unwrap(),
+                value_t!(cmd_matches, "blocksize", u32)
+                    .unwrap_or_else(|e| e.exit()),
+                value_t!(cmd_matches, "branch", u16)
+                    .unwrap_or_else(|e| e.exit()),
                 cmd_matches.is_present("short"),
-                value_t!(cmd_matches, "hash", HashFunctions).unwrap()
+                value_t!(cmd_matches, "hash", HashFunctions)
+                    .unwrap_or_else(|e| e.exit())
             )
         },
         HashCommand::VerifyHash => {
