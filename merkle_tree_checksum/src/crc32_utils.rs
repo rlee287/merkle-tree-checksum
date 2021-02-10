@@ -1,4 +1,5 @@
 // Update of https://github.com/ajungren/crc32_digest to work with digest v0.9
+#![forbid(unsafe_code)]
 
 use crc32fast::Hasher;
 use std::hash::Hasher as HasherTrait;
