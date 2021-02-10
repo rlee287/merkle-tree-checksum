@@ -5,14 +5,15 @@ extern crate clap;
 
 extern crate enquote;
 
-mod utils;
+mod crc32_utils;
+// mod utils;
 
 use std::convert::AsMut;
 use std::iter::FromIterator;
 use std::cmp::min;
 use std::fmt::Write as FmtWrite;
 use std::thread;
-use std::sync::mpsc::channel;
+use std::sync::mpsc;
 
 use chrono::Local;
 
@@ -21,7 +22,7 @@ use std::io::{self, Write, BufWriter};
 use std::path::{Path,PathBuf};
 use walkdir::WalkDir;
 
-use utils::Crc32;
+use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512};
 
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
@@ -207,7 +208,7 @@ fn run() -> i32 {
     let file_list = file_list_result.unwrap();
 
     // Further changes needed here, depends on verify command stuff
-    let mut out_file: Box<dyn Write + Send> = match cmd_matches.value_of("output") {
+    let mut out_file: Box<dyn Write + Send + Sync> = match cmd_matches.value_of("output") {
         None => Box::new(io::stdout()),
         Some(name) => match File::create(name) {
             Ok(file) => Box::new(BufWriter::new(file)),
@@ -284,7 +285,7 @@ fn run() -> i32 {
             pb.tick();
         }
 
-        let (tx, rx) = channel::<merkle_tree::HashRange>();
+        let (tx, rx) = mpsc::channel::<merkle_tree::HashRange>();
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
