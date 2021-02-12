@@ -87,3 +87,7 @@ impl HashRange {
                 hash_result: hash_result}
     }
 }
+
+pub trait Consumer<T> {
+    fn accept(&self, var: T) -> Result<(), T>;
+}

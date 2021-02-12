@@ -7,19 +7,19 @@ use std::io::BufReader;
 use std::fs::File;
 use std::cmp::min;
 use std::convert::TryInto;
-use std::sync::mpsc::Sender;
 
 use digest::Digest;
 use generic_array::{GenericArray};
 
 use merkle_utils::*;
-pub use merkle_utils::{node_count, BlockRange, HashRange};
+pub use merkle_utils::{node_count, BlockRange, HashRange, Consumer};
 
-pub fn merkle_hash_file<T>(file: File, block_size: u32, branch: u16,
-        hash_queue: Sender<HashRange>)
+pub fn merkle_hash_file<D, C>(file: File, block_size: u32, branch: u16,
+        hash_queue: C)
          -> Box<[u8]>
 where
-    T: Digest
+    D: Digest,
+    C: Consumer<HashRange>
 {
     let file_len = file.metadata().unwrap().len();
     let block_count = match ceil_div(file_len, block_size.into()) {
@@ -32,7 +32,7 @@ where
     let mut file_buf = BufReader::with_capacity(
         buf_size.try_into().unwrap(), file);
     let block_range = BlockRange::new(0, effective_block_count, false);
-    let hash_out = merkle_tree_file_helper::<T>(&mut file_buf,
+    let hash_out = merkle_tree_file_helper::<D>(&mut file_buf,
         block_size, block_count, block_range, branch, &hash_queue).unwrap();
     drop(hash_queue);
     return hash_out.to_vec().into_boxed_slice();
@@ -43,7 +43,7 @@ where
 fn merkle_tree_file_helper<T>(file: &mut BufReader<File>,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
-        hash_queue: &Sender<HashRange>)
+        hash_queue: &dyn Consumer<HashRange>)
         -> Option<GenericArray<u8, T::OutputSize>>
 where
     T: Digest
@@ -111,7 +111,7 @@ where
         let block_range = BlockRange::new(start_byte, end_byte_block, true);
         let byte_range = BlockRange::new(start_byte, end_byte_file, true);
         let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
-        hash_queue.send(block_hash_result).unwrap();
+        hash_queue.accept(block_hash_result).unwrap();
         return Some(hash_result);
     } else {
         return None;
