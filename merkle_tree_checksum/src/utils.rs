@@ -9,6 +9,19 @@ use walkdir::WalkDir;
 
 use std::sync::mpsc;
 
+
+arg_enum!{
+    #[derive(PartialEq, Eq, Debug, Clone, Copy)]
+    #[allow(non_camel_case_types)]
+    pub enum HashFunctions {
+        crc32,
+        sha224,
+        sha256,
+        sha384,
+        sha512
+    }
+}
+
 pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     let name_chars = Vec::from_iter(name.chars());
     if name.len() <= len_threshold {

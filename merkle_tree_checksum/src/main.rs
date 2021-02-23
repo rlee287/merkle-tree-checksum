@@ -7,6 +7,7 @@ extern crate enquote;
 
 mod crc32_utils;
 mod utils;
+mod parse_functions;
 
 use std::convert::AsMut;
 use std::iter::FromIterator;
@@ -17,28 +18,18 @@ use std::sync::mpsc;
 use chrono::Local;
 
 use std::fs::File;
-use std::io::{self, Write, BufWriter};
+use std::io::{self, Read, Write, BufRead, BufReader, BufWriter};
+use parse_functions::ParsingErrors;
 use std::path::{Path,PathBuf};
 
 use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512};
 use merkle_tree::merkle_hash_file;
+use utils::HashFunctions;
 use utils::MpscConsumer;
 
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle};
-
-arg_enum!{
-    #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-    #[allow(non_camel_case_types)]
-    enum HashFunctions {
-        crc32,
-        sha224,
-        sha256,
-        sha384,
-        sha512
-    }
-}
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
@@ -123,6 +114,7 @@ fn run() -> i32 {
         (_, _) => panic!("Invalid subcommand detected")
     };
 
+    // let mut hash_file_read: Option<Box<dyn Read + Send>> = None;
     let (file_list_result, block_size, branch_factor, short_output, hash_enum):
             (Result<Vec<PathBuf>, String>, u32, u16, bool, HashFunctions)
             = match cmd_chosen {
@@ -141,13 +133,165 @@ fn run() -> i32 {
             )
         },
         HashCommand::VerifyHash => {
-            // TODO: parse input file to get options
+            let hash_file_str = cmd_matches.value_of("FILE").unwrap();
+            let hash_file = match File::open(hash_file_str) {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!("Error opening hash file {}: {}",
+                            hash_file_str, e);
+                    return 1;
+                }
+            };
+            let mut hash_file_reader = BufReader::new(hash_file);
+
+            let mut file_vec : Vec<PathBuf> = Vec::new();
+            // Parse version number
+            let version_line = parse_functions::next_noncomment_line(&mut hash_file_reader);
+            match parse_functions::check_version_line(&version_line) {
+                Ok(_v) => {
+                    // Do nothing for now, select version format later
+                },
+                Err(e) => match e {
+                    ParsingErrors::MalformedFile => {
+                        eprintln!("Error: hash file is malformed: unable to parse version line");
+                        return 1;
+                    },
+                    ParsingErrors::MalformedVersion(s) => {
+                        eprintln!("Error: hash file has malformed version {}",s);
+                        return 1;
+                    }
+                    ParsingErrors::BadVersion(s) => {
+                        eprintln!("Error: hash file has unsupported version {}", s);
+                        return 1;
+                    }
+                    _ => unreachable!()
+                }
+            }
+            // Read in the next three lines
+            let mut hash_param_arr = [String::default(), String::default(), String::default()];
+            for i in 0..3 {
+                let line = parse_functions::next_noncomment_line(&mut hash_file_reader);
+                // Slice to remove newline
+                hash_param_arr[i] = line[..line.len()-1].to_string();
+            }
+            let (block_size_result,
+                branch_factor_result,
+                hash_function_result,
+                other_errors)
+                = parse_functions::get_hash_params(&hash_param_arr);
+            if other_errors.len() > 0 {
+                let mut error_vec_string: Vec<String> = Vec::new();
+                let mut error_string = String::default();
+                for error in other_errors {
+                    match error {
+                        ParsingErrors::MalformedFile => {
+                            error_string = "hash file is malformed: unable to parse tree parameters".to_string();
+                            break;
+                        },
+                        ParsingErrors::UnexpectedParameter(s) => {
+                            error_vec_string.push(s);
+                        },
+                        _ => unreachable!()
+                    };
+                }
+                if error_string.is_empty() {
+                    error_string = format!("hash file has unexpected parameters {}",
+                        error_vec_string.join(", "));
+                }
+                eprintln!("Error: {}", error_string);
+                return 1;
+            }
+
+            let format_line = parse_functions::next_noncomment_line(&mut hash_file_reader);
+            let is_short_hash = match format_line.as_str() {
+                "Hashes:\n" => true,
+                "Files:\n" => false,
+                _ => {
+                    eprintln!("Error: hash file is malformed: file should have file list or hash list");
+                    return 1;
+                }
+            };
+            if !is_short_hash {
+                let mut build_filename_str = String::default();
+                // TODO: refactor
+                loop {
+                    // read_line does append
+                    let (start_quote, end_quote)
+                            = parse_functions::first_two_quotes(build_filename_str.as_str());
+                    if let Some(i) = end_quote {
+                        let quote_slice = &build_filename_str[start_quote.unwrap()..=i];
+                        let unquoted_res = enquote::unquote(quote_slice);
+                        let unquoted = match unquoted_res {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("Error: unable to unquote file name {}: {}",
+                                    quote_slice, e);
+                                return 1;
+                            }
+                        };
+                        file_vec.push(PathBuf::from(unquoted));
+                        build_filename_str = build_filename_str[i+1..].to_owned();
+                    } else if let Some(_) = start_quote {
+                        hash_file_reader.read_line(&mut build_filename_str).unwrap();
+                    } else {
+                        // TODO: rather fragile
+                        if build_filename_str.trim() == "Hashes:" {
+                            break;
+                        }
+                        if build_filename_str.len() >= 256 {
+                            // Bail out to avoid reading rest of file into memory
+                            eprintln!("Error: hash file is malformed: errors extracting file list");
+                            return 1;
+                        }
+                        build_filename_str += parse_functions::next_noncomment_line(&mut hash_file_reader).as_str();
+                    }
+                }
+            } else {
+                todo!();
+            }
+
             (
-                todo!(),
-                todo!(),
-                todo!(),
-                todo!(),
-                todo!()
+                match file_vec.iter().find(|path| !path.is_file()) {
+                    Some(i) => Err(i.to_str().unwrap().to_owned()),
+                    None => Ok(file_vec)
+                },
+                match block_size_result {
+                    Ok(val) => val,
+                    Err(e) => {
+                        let err_str = match e {
+                            ParsingErrors::MissingParameter => "missing block size".to_owned(),
+                            ParsingErrors::BadParameterValue(v) => v,
+                            _ => unreachable!()
+                        };
+                        eprintln!("Error: {}", err_str);
+                        return 1;
+                    }
+                },
+                match branch_factor_result {
+                    Ok(val) => val,
+                    Err(e) => {
+                        let err_str = match e {
+                            ParsingErrors::MissingParameter => "missing branch factor".to_owned(),
+                            ParsingErrors::BadParameterValue(v) => v,
+                            _ => unreachable!()
+                        };
+                        eprintln!("Error: {}", err_str);
+                        return 1;
+                    }
+                },
+                is_short_hash,
+                match hash_function_result {
+                    Ok(val) => val,
+                    Err(e) => {
+                        let err_str = match e {
+                            ParsingErrors::MissingParameter => "missing hash function".to_owned(),
+                            ParsingErrors::BadParameterValue(v) => v,
+                            _ => unreachable!()
+                        };
+                        eprintln!("Error: {}", err_str);
+                        return 1;
+                    }
+                }
             )
         }
     };
@@ -190,6 +334,9 @@ fn run() -> i32 {
         }
         writeln!(write_handle, "Hashes:").unwrap();
         write_handle.flush().unwrap();
+    } else {
+        // temp
+        todo!();
     }
 
     type HashConsumer = MpscConsumer<merkle_tree::HashRange>;
@@ -233,7 +380,7 @@ fn run() -> i32 {
             let abbreviated_msg = utils::abbreviate_filename(file_part, 25);
             assert!(abbreviated_msg.len() <= 25);
             pb.set_message(&abbreviated_msg);
-            pb.set_draw_delta(min(pb_len/100, 512));
+            pb.set_draw_delta(min(pb_len/100, 256));
             pb.tick();
         }
 
