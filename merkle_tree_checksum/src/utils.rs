@@ -24,20 +24,20 @@ arg_enum!{
 
 pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     let name_chars = Vec::from_iter(name.chars());
-    if name.len() <= len_threshold {
+    if name_chars.len() <= len_threshold {
         // TODO: is copy avoidable?
         return name.to_owned();
-    } else if len_threshold <= 3 {
-        // Return the first 3 chars (*not* bytes)
-        return name_chars[..3].iter().collect::<String>();
+    } else if len_threshold < 3 {
+        // Return the first len_threshold chars (*not* bytes)
+        return name_chars[..len_threshold].iter().collect::<String>();
     } else {
-        // Join the beginning and end part of the name with ellipses
-        let filechar_count = len_threshold - 3;
+        // Join the beginning and end part of the name with ~
+        let filechar_count = len_threshold - 1;
         // Use subtraction to ensure consistent sum
         let end_half_len = filechar_count / 2;
         let begin_half_len = filechar_count - end_half_len;
         return [&name[..begin_half_len],
-                "...",
+                "~",
                 &name[name.len()-end_half_len..]].join("");
     }
 }
