@@ -341,11 +341,11 @@ fn run() -> i32 {
 
     type HashConsumer = MpscConsumer<merkle_tree::HashRange>;
     let merkle_tree_thunk = match hash_enum {
-        HashFunctions::crc32 => merkle_hash_file::<Crc32,HashConsumer>,
-        HashFunctions::sha224 => merkle_hash_file::<Sha224,HashConsumer>,
-        HashFunctions::sha256 => merkle_hash_file::<Sha256,HashConsumer>,
-        HashFunctions::sha384 => merkle_hash_file::<Sha384,HashConsumer>,
-        HashFunctions::sha512 => merkle_hash_file::<Sha512,HashConsumer>,
+        HashFunctions::crc32 => merkle_hash_file::<File,Crc32,HashConsumer>,
+        HashFunctions::sha224 => merkle_hash_file::<File,Sha224,HashConsumer>,
+        HashFunctions::sha256 => merkle_hash_file::<File,Sha256,HashConsumer>,
+        HashFunctions::sha384 => merkle_hash_file::<File,Sha384,HashConsumer>,
+        HashFunctions::sha512 => merkle_hash_file::<File,Sha512,HashConsumer>,
     };
 
     if hash_enum == HashFunctions::crc32

@@ -4,7 +4,6 @@ mod merkle_utils;
 
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::fs::File;
 use std::cmp::min;
 use std::convert::TryInto;
 
@@ -12,16 +11,17 @@ use digest::Digest;
 use generic_array::{GenericArray};
 
 use merkle_utils::*;
-pub use merkle_utils::{node_count, BlockRange, HashRange, Consumer};
+pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
 
-pub fn merkle_hash_file<D, C>(file: File, block_size: u32, branch: u16,
+pub fn merkle_hash_file<F, D, C>(mut file: F, block_size: u32, branch: u16,
         hash_queue: C)
          -> Box<[u8]>
 where
+    F: Read + Seek,
     D: Digest,
     C: Consumer<HashRange>
 {
-    let file_len = file.metadata().unwrap().len();
+    let file_len = seek_len(&mut file);
     let block_count = match ceil_div(file_len, block_size.into()) {
         0 => 1,
         n => n
@@ -29,10 +29,10 @@ where
     let effective_block_count = exp_ceil_log(block_count, branch);
 
     let buf_size: u32 = min(block_size*(branch as u32), 16*1024*1024);
-    let mut file_buf = BufReader::with_capacity(
+    let mut file_buf: BufReader<F> = BufReader::with_capacity(
         buf_size.try_into().unwrap(), file);
     let block_range = BlockRange::new(0, effective_block_count, false);
-    let hash_out = merkle_tree_file_helper::<D>(&mut file_buf,
+    let hash_out = merkle_tree_file_helper::<F, D>(&mut file_buf,
         block_size, block_count, block_range, branch, &hash_queue).unwrap();
     drop(hash_queue);
     return hash_out.to_vec().into_boxed_slice();
@@ -40,12 +40,13 @@ where
 
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
 // Block range includes the first and excludes the last
-fn merkle_tree_file_helper<T>(file: &mut BufReader<File>,
+fn merkle_tree_file_helper<F, T>(file: &mut BufReader<F>,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
         hash_queue: &dyn Consumer<HashRange>)
         -> Option<GenericArray<u8, T::OutputSize>>
 where
+    F: Read + Seek,
     T: Digest
 {
     type HashResult<T> = GenericArray<u8, <T as Digest>::OutputSize>;
@@ -85,7 +86,7 @@ where
                     let slice_start = block_range.start + incr_count * block_increment;
                     let slice_end = block_range.start + (incr_count + 1) * block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end, false);
-                    let subhash = merkle_tree_file_helper::<T>(file, block_size, block_count, slice_range, branch, hash_queue);
+                    let subhash = merkle_tree_file_helper::<F, T>(file, block_size, block_count, slice_range, branch, hash_queue);
                     if subhash.is_some() {
                         hash_vector.push(subhash.unwrap());
                     } else {
