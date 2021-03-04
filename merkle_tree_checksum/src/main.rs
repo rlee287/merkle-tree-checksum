@@ -365,7 +365,8 @@ fn run() -> i32 {
                 return 1
             }
         };
-        let pb_len = merkle_tree::node_count(file_obj.metadata().unwrap().len(), block_size, branch_factor);
+        let file_size = file_obj.metadata().unwrap().len();
+        let pb_len = merkle_tree::node_count(file_size, block_size, branch_factor).unwrap();
         let pb = match matches.is_present("quiet") {
             false => ProgressBar::new(pb_len),
             true => ProgressBar::hidden()

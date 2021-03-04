@@ -3,7 +3,7 @@
 use std::fmt;
 use std::io::{Seek, SeekFrom};
 
-pub(crate) fn ceil_div(num: u64, denom: u64) -> u64 {
+pub(crate) const fn ceil_div(num: u64, denom: u64) -> u64 {
     let result = num / denom;
     // return
     match num % denom {
@@ -11,8 +11,8 @@ pub(crate) fn ceil_div(num: u64, denom: u64) -> u64 {
         _ => result + 1
     }
 }
-pub(crate) fn exp_ceil_log(number: u64, base: u16) -> u64 {
-    let base_as_u64: u64 = base.into();
+pub(crate) const fn exp_ceil_log(number: u64, base: u16) -> u64 {
+    let base_as_u64: u64 = base as u64;
     let mut result = 1;
     while result < number {
         result = result * base_as_u64;
@@ -20,23 +20,33 @@ pub(crate) fn exp_ceil_log(number: u64, base: u16) -> u64 {
     // return
     result
 }
-pub fn node_count(file_size: u64, block_size: u32, branch: u16) -> u64 {
+pub const fn node_count(file_size: u64, block_size: u32, branch: u16) -> Option<u64> {
     let block_count = ceil_div(file_size, block_size as u64);
     let mut node_count = block_count;
     let mut node_at_layer_count = block_count;
-    assert!(branch >= 2);
-    while node_at_layer_count > 1 {
-        node_at_layer_count = ceil_div(node_at_layer_count, branch as u64);
-        node_count += node_at_layer_count;
-    }
-    match node_count {
-        0 => 1,
-        val => val
+    if branch < 2 {
+        None
+    } else {
+        while node_at_layer_count > 1 {
+            node_at_layer_count = ceil_div(node_at_layer_count, branch as u64);
+            node_count += node_at_layer_count;
+        }
+        match node_count {
+            0 => Some(1),
+            val => Some(val)
+        }
     }
 }
 
 pub(crate) fn current_seek_pos(seekable: &mut dyn Seek) -> u64 {
     seekable.seek(SeekFrom::Current(0)).unwrap()
+}
+pub fn seek_len(seekable: &mut dyn Seek) -> u64 {
+    let old_pos = seekable.seek(SeekFrom::Current(0)).unwrap();
+    let len = seekable.seek(SeekFrom::End(0)).unwrap();
+    seekable.seek(SeekFrom::Start(old_pos)).unwrap();
+    // return
+    len
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

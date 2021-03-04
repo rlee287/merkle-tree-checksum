@@ -9,7 +9,6 @@ use walkdir::WalkDir;
 
 use std::sync::mpsc;
 
-
 arg_enum!{
     #[derive(PartialEq, Eq, Debug, Clone, Copy)]
     #[allow(non_camel_case_types)]
