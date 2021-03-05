@@ -178,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "merkle_tree_checksum"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "clap",

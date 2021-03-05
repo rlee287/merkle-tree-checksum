@@ -32,7 +32,7 @@ When in `--short` mode, the output follows the format used by tools like `sha256
 When not in `--short` mode, the files are first listed in a separate `File: `, where each entry is a quoted file name. Each hash is then printed with the following format:
 
 ```
-[file_index] [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
+[file_index] [{tree_block_start}-{tree_block_end}] [{file_byte_start}-{file_byte_end}] {hash}
 ```
 
-where the file index is a 0-indexed position from the file list printed earlier, and the blocks' start and end indicate which bytes are included in the given hash. (`tree_block_end` indicates the end of the bytes covered by the tree structure, and may be larger than `file_block_end` when the file's block count is not a power of `branch_factor`.)
+where the file index is a 0-indexed position from the file list printed earlier. `tree_block_start` and `tree_block_end` indicate the indicies of blocks covered by the hash in the tree structure, and `file_byte_start` and `file_byte_end` indicate the range of bytes covered by the hash.  `tree_block_end` may point to a block end past the actual end-of-file when the file's block count is not a power of `branch_factor`.)

@@ -102,8 +102,8 @@ where
         let hash_result = T::digest(hash_input.as_slice());
         // Byte range start is theoretical from tree structure
         // Byte range end may differ due to EOF
-        let start_byte = block_range.start*(block_size as u64);
-        let end_byte_block = block_range.end*(block_size as u64)-1;
+        let start_byte = block_range.start;
+        let end_byte_block = block_range.end-1;
         let end_byte_file = match current_seek_pos(file) {
             0 => 0,
             val => val - 1
