@@ -71,9 +71,12 @@ pub(crate) fn get_file_list(file_strs: Vec<&str>) -> Result<Vec<PathBuf>,String>
     return Ok(file_list);
 }
 
-#[derive(Clone)]
+// allow(dead_code) for switching between unbouned and bounded channels
+#[derive(Debug, Clone)]
 enum SenderTypes<T> {
+    #[allow(dead_code)]
     UnboundedSend(mpsc::Sender<T>),
+    #[allow(dead_code)]
     BoundedSend(mpsc::SyncSender<T>)
 }
 
@@ -83,9 +86,11 @@ pub struct MpscConsumer<T> {
 }
 
 impl<T> MpscConsumer<T> {
+    #[allow(dead_code)]
     pub fn new_async(tx: mpsc::Sender<T>) -> MpscConsumer<T> {
         MpscConsumer::<T> {sender: SenderTypes::UnboundedSend(tx)}
     }
+    #[allow(dead_code)]
     pub fn new_sync(tx: mpsc::SyncSender<T>) -> MpscConsumer<T> {
         MpscConsumer::<T> {sender: SenderTypes::BoundedSend(tx)}
     }
