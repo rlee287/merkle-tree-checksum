@@ -29,7 +29,8 @@ use utils::HashFunctions;
 use utils::MpscConsumer;
 
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle, ProgressBarWrap,
+    ProgressDrawTarget, MultiProgress};
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
@@ -339,16 +340,23 @@ fn run() -> i32 {
         todo!();
     }
 
+    let is_quiet = matches.is_present("quiet");
+
     type HashConsumer = MpscConsumer<merkle_tree::HashRange>;
     let merkle_tree_thunk = match hash_enum {
-        HashFunctions::crc32 => merkle_hash_file::<File,Crc32,HashConsumer>,
-        HashFunctions::sha224 => merkle_hash_file::<File,Sha224,HashConsumer>,
-        HashFunctions::sha256 => merkle_hash_file::<File,Sha256,HashConsumer>,
-        HashFunctions::sha384 => merkle_hash_file::<File,Sha384,HashConsumer>,
-        HashFunctions::sha512 => merkle_hash_file::<File,Sha512,HashConsumer>,
+        HashFunctions::crc32 =>
+            merkle_hash_file::<ProgressBarWrap<File>,Crc32,HashConsumer>,
+        HashFunctions::sha224 =>
+            merkle_hash_file::<ProgressBarWrap<File>,Sha224,HashConsumer>,
+        HashFunctions::sha256 =>
+            merkle_hash_file::<ProgressBarWrap<File>,Sha256,HashConsumer>,
+        HashFunctions::sha384 =>
+            merkle_hash_file::<ProgressBarWrap<File>,Sha384,HashConsumer>,
+        HashFunctions::sha512 =>
+            merkle_hash_file::<ProgressBarWrap<File>,Sha512,HashConsumer>,
     };
 
-    if hash_enum == HashFunctions::crc32
+    if !is_quiet && hash_enum == HashFunctions::crc32
             && cmd_chosen == HashCommand::GenerateHash {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
@@ -366,35 +374,55 @@ fn run() -> i32 {
             }
         };
         let file_size = file_obj.metadata().unwrap().len();
-        let pb_len = merkle_tree::node_count(file_size, block_size, branch_factor).unwrap();
-        let pb = match matches.is_present("quiet") {
-            false => ProgressBar::new(pb_len),
-            true => ProgressBar::hidden()
-        };
-        let pb_style = ProgressStyle::default_bar()
-            .template("{msg:25!} {pos:>8}/{len:8} | {per_sec:>8} [{elapsed_precise}] ETA [{eta_precise}]");
-        // Scope ProgressBar setup
-        {
-            pb.set_style(pb_style);
+        let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor).unwrap();
+        let pb_file_style = ProgressStyle::default_bar()
+        .template("{msg:24!} {bytes:>8}/{total_bytes:8} | {bytes_per_sec:>9}");
+        let pb_hash_style = ProgressStyle::default_bar()
+            .template("{msg:24!} {pos:>8}/{len:8} | {per_sec:>9} [{elapsed_precise}] ETA [{eta_precise}]");
+
+        let pb_holder = MultiProgress::new();
+        let pb_file = pb_holder.add(ProgressBar::new(file_size));
+        let pb_hash = pb_holder.add(ProgressBar::new(pb_hash_len));
+
+        if is_quiet {
+            pb_holder.set_draw_target(ProgressDrawTarget::hidden());
+        } else {
+            pb_hash.set_style(pb_hash_style);
+            pb_file.set_style(pb_file_style);
+
             let file_part = Path::new(&file_name).file_name().unwrap()
                     .to_str().unwrap();
-            let abbreviated_msg = utils::abbreviate_filename(file_part, 25);
-            assert!(abbreviated_msg.len() <= 25);
-            pb.set_message(&abbreviated_msg);
-            pb.set_draw_delta(min(pb_len/100, 256));
-            pb.tick();
+            let abbreviated_msg = utils::abbreviate_filename(file_part, 24);
+            assert!(abbreviated_msg.len() <= 24);
+
+            pb_file.set_message(&abbreviated_msg);
+            pb_file.set_draw_delta((block_size*branch_factor as u32) as u64);
+
+            pb_hash.set_message(&abbreviated_msg);
+            pb_hash.set_draw_delta(min(pb_hash_len/100, 256));
         }
+
+        let pb_thread_handle = thread::Builder::new()
+            .name(String::from(filename_str)+"_pb_wait")
+            .spawn(move || {
+                pb_holder.join().unwrap()
+            })
+            .unwrap();
 
         let (tx, rx) = mpsc::channel::<merkle_tree::HashRange>();
         let tx_wrap = utils::MpscConsumer::new_async(tx);
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
-                merkle_tree_thunk(file_obj, block_size, branch_factor, tx_wrap)
+                let wrap = pb_file.wrap_read(file_obj);
+                let result = merkle_tree_thunk(wrap,
+                    block_size, branch_factor, tx_wrap);
+                pb_file.finish_at_current_pos();
+                result
             })
             .unwrap();
         for block_hash in rx.into_iter() {
-            pb.inc(1);
+            pb_hash.inc(1);
             if !short_output {
                 // {file_index} [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
                 writeln!(write_handle,"{:3} {} {} {}",
@@ -405,18 +433,18 @@ fn run() -> i32 {
             }
             thread::yield_now();
         }
+        pb_hash.finish_at_current_pos();
         let final_hash = thread_handle.join().unwrap();
+        pb_thread_handle.join().unwrap();
         if short_output {
             writeln!(write_handle, "{}  {}",
                 utils::arr_to_hex_str(final_hash.as_ref()),
                 enquote::enquote('"',filename_str)).unwrap();
         }
         write_handle.flush().unwrap();
-        if !matches.is_present("quiet") {
-            assert_eq!(pb.position(), pb.length());
+        if !is_quiet {
+            assert_eq!(pb_hash.position(), pb_hash.length());
         }
-        pb.finish_at_current_pos();
-
     }
     return 0;
 }
