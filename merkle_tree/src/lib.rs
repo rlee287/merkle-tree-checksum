@@ -104,12 +104,12 @@ where
         // Byte range end may differ due to EOF
         let start_block = block_range.start;
         let start_byte = block_range.start*block_size as u64;
-        let end_byte_block = block_range.end-1;
+        let end_block = block_range.end-1;
         let end_byte_file = match current_seek_pos(file) {
             0 => 0,
             val => val - 1
         };
-        let block_range = BlockRange::new(start_block, end_byte_block, true);
+        let block_range = BlockRange::new(start_block, end_block, true);
         let byte_range = BlockRange::new(start_byte, end_byte_file, true);
         let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
         hash_queue.accept(block_hash_result).unwrap();
