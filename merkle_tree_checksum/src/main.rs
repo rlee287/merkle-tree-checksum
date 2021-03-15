@@ -379,9 +379,11 @@ fn run() -> i32 {
         .template("{msg:24!} {bytes:>8}/{total_bytes:8} | {bytes_per_sec:>9}");
         let pb_hash_style = ProgressStyle::default_bar()
             .template("{msg:24!} {pos:>8}/{len:8} | {per_sec:>9} [{elapsed_precise}] ETA [{eta_precise}]");
+
         let pb_holder = MultiProgress::new();
         let pb_file = pb_holder.add(ProgressBar::new(file_size));
         let pb_hash = pb_holder.add(ProgressBar::new(pb_hash_len));
+
         if is_quiet {
             pb_holder.set_draw_target(ProgressDrawTarget::hidden());
         } else {
@@ -401,11 +403,11 @@ fn run() -> i32 {
         }
 
         let pb_thread_handle = thread::Builder::new()
-        .name(String::from(filename_str)+"_pb_wait")
-        .spawn(move || {
-            pb_holder.join().unwrap()
-        })
-        .unwrap();
+            .name(String::from(filename_str)+"_pb_wait")
+            .spawn(move || {
+                pb_holder.join().unwrap()
+            })
+            .unwrap();
 
         let (tx, rx) = mpsc::channel::<merkle_tree::HashRange>();
         let tx_wrap = utils::MpscConsumer::new_async(tx);
