@@ -6,9 +6,10 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::cmp::min;
 use std::convert::TryInto;
+use num_iter::range_step;
 
 use digest::Digest;
-use generic_array::{GenericArray};
+use generic_array::GenericArray;
 
 use merkle_utils::*;
 pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
@@ -40,6 +41,7 @@ where
 
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
 // Block range includes the first and excludes the last
+// Second element of tuple is seek position
 fn merkle_tree_file_helper<F, T>(file: &mut BufReader<F>,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
@@ -89,9 +91,11 @@ where
                 let block_increment = block_interval / (branch as u64);
                 let mut hash_vector: Vec::<HashResult<T>> = Vec::with_capacity(branch.into());
                 // Compute the hash for each branch
-                for incr_count in 0..(branch as u64) {
-                    let slice_start = block_range.start + incr_count * block_increment;
-                    let slice_end = block_range.start + (incr_count + 1) * block_increment;
+                for slice_start in range_step(
+                        block_range.start,
+                        block_range.start+block_increment*branch as u64,
+                        block_increment) {
+                    let slice_end = slice_start+block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end, false);
                     let subhash_res = merkle_tree_file_helper::<F, T>(file, block_size, block_count, slice_range, branch, hash_queue);
                     if subhash_res.is_some() {
