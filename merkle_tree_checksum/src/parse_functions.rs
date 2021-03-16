@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::io::{BufRead};
+use std::io::{self, BufRead};
 use semver::{Version, VersionReq};
 
 use crate::utils::HashFunctions;
@@ -28,13 +28,15 @@ pub(crate) fn first_two_quotes(s: &str) -> (Option<usize>, Option<usize>) {
 }
 
 // Contents of working_str is the line after comments
-// TODO: handle EOF
-pub(crate) fn next_noncomment_line(reader: &mut dyn BufRead) -> String {
+pub(crate) fn next_noncomment_line(reader: &mut dyn BufRead) -> io::Result<String> {
     let mut working_str = String::default();
     loop {
-        reader.read_line(&mut working_str).unwrap();
+        let read_len = reader.read_line(&mut working_str)?;
+        if read_len == 0 {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "EOF"));
+        }
         if !working_str.is_empty() && working_str.as_bytes()[0] != b'#' {
-            return working_str;
+            return Ok(working_str);
         }
         working_str.clear();
     }

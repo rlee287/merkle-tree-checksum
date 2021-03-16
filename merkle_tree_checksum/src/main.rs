@@ -18,7 +18,7 @@ use std::sync::mpsc;
 use chrono::Local;
 
 use std::fs::File;
-use std::io::{self, Read, Write, BufRead, BufReader, BufWriter};
+use std::io::{self, Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
 use parse_functions::ParsingErrors;
 use std::path::{Path,PathBuf};
 
@@ -147,7 +147,7 @@ fn run() -> i32 {
 
             let mut file_vec : Vec<PathBuf> = Vec::new();
             // Parse version number
-            let version_line = parse_functions::next_noncomment_line(&mut hash_file_reader);
+            let version_line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
             match parse_functions::check_version_line(&version_line) {
                 Ok(_v) => {
                     // Do nothing for now, select version format later
@@ -171,7 +171,7 @@ fn run() -> i32 {
             // Read in the next three lines
             let mut hash_param_arr = [String::default(), String::default(), String::default()];
             for i in 0..3 {
-                let line = parse_functions::next_noncomment_line(&mut hash_file_reader);
+                let line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
                 // Slice to remove newline
                 hash_param_arr[i] = line[..line.len()-1].to_string();
             }
@@ -203,7 +203,7 @@ fn run() -> i32 {
                 return 1;
             }
 
-            let format_line = parse_functions::next_noncomment_line(&mut hash_file_reader);
+            let format_line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
             let is_short_hash = match format_line.as_str() {
                 "Hashes:\n" => true,
                 "Files:\n" => false,
@@ -212,43 +212,55 @@ fn run() -> i32 {
                     return 1;
                 }
             };
-            if !is_short_hash {
-                let mut build_filename_str = String::default();
-                // TODO: refactor
-                loop {
-                    // read_line does append
-                    let (start_quote, end_quote)
-                            = parse_functions::first_two_quotes(build_filename_str.as_str());
-                    if let Some(i) = end_quote {
-                        let quote_slice = &build_filename_str[start_quote.unwrap()..=i];
-                        let unquoted_res = enquote::unquote(quote_slice);
-                        let unquoted = match unquoted_res {
-                            Ok(s) => s,
-                            Err(e) => {
-                                eprintln!("Error: unable to unquote file name {}: {}",
-                                    quote_slice, e);
-                                return 1;
-                            }
-                        };
-                        file_vec.push(PathBuf::from(unquoted));
-                        build_filename_str = build_filename_str[i+1..].to_owned();
-                    } else if let Some(_) = start_quote {
-                        hash_file_reader.read_line(&mut build_filename_str).unwrap();
-                    } else {
-                        // TODO: rather fragile
-                        if build_filename_str.trim() == "Hashes:" {
-                            break;
-                        }
-                        if build_filename_str.len() >= 256 {
-                            // Bail out to avoid reading rest of file into memory
-                            eprintln!("Error: hash file is malformed: errors extracting file list");
+            let list_begin_pos: Option<u64> = match is_short_hash {
+                true => Some(
+                    hash_file_reader.seek(SeekFrom::Current(0)).unwrap()
+                ),
+                false => None
+            };
+            let mut build_filename_str = String::default();
+            // TODO: refactor
+            loop {
+                // read_line does append
+                let (start_quote, end_quote)
+                        = parse_functions::first_two_quotes(build_filename_str.as_str());
+                if let Some(i) = end_quote {
+                    let quote_slice = &build_filename_str[start_quote.unwrap()..=i];
+                    let unquoted_res = enquote::unquote(quote_slice);
+                    let unquoted = match unquoted_res {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("Error: unable to unquote file name {}: {}",
+                                quote_slice, e);
                             return 1;
                         }
-                        build_filename_str += parse_functions::next_noncomment_line(&mut hash_file_reader).as_str();
+                    };
+                    file_vec.push(PathBuf::from(unquoted));
+                    build_filename_str = build_filename_str[i+1..].to_owned();
+                } else if let Some(_) = start_quote {
+                    if hash_file_reader.read_line(&mut build_filename_str)
+                            .is_err() {
+                        eprintln!("Error: unterminated quote at EOF");
                     }
+                } else {
+                    // TODO: rather fragile
+                    if !is_short_hash && build_filename_str.trim() == "Hashes:" {
+                        break;
+                    }
+                    if build_filename_str.len() >= 256 {
+                        // Bail out to avoid reading rest of file into memory
+                        eprintln!("Error: hash file is malformed: errors extracting file list");
+                        return 1;
+                    }
+                    let next_line = match parse_functions::next_noncomment_line(&mut hash_file_reader) {
+                        Ok(s) => s,
+                        Err(_) => break
+                    };
+                    build_filename_str += next_line.as_str();
                 }
-            } else {
-                todo!();
+            }
+            if list_begin_pos.is_some() {
+                hash_file_reader.seek(SeekFrom::Start(list_begin_pos.unwrap())).unwrap();
             }
 
             (
