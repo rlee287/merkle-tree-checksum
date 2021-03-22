@@ -99,5 +99,5 @@ impl HashRange {
 }
 
 pub trait Consumer<T> {
-    fn accept(&self, var: T) -> Result<(), T>;
+    fn accept(&mut self, var: T) -> Result<(), T>;
 }

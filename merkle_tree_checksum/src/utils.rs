@@ -97,7 +97,7 @@ impl<T> MpscConsumer<T> {
 }
 
 impl<T> merkle_tree::Consumer<T> for MpscConsumer<T> {
-    fn accept(&self, var: T) -> Result<(), T> {
+    fn accept(&mut self, var: T) -> Result<(), T> {
         match &self.sender {
             SenderTypes::UnboundedSend(sender) => {
                 match sender.send(var) {

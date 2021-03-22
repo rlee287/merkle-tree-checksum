@@ -17,7 +17,7 @@ pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
 
 // Hash Generation
 pub fn merkle_hash_file<F, D, C>(mut file: F, block_size: u32, branch: u16,
-        hash_queue: C)
+        mut hash_queue: C)
          -> Box<[u8]>
 where
     F: Read + Seek,
@@ -36,7 +36,7 @@ where
         buf_size.try_into().unwrap(), file);
     let block_range = BlockRange::new(0, effective_block_count, false);
     let hash_out = merkle_tree_file_helper::<F, D>(&mut file_buf,
-        block_size, block_count, block_range, branch, &hash_queue).unwrap();
+        block_size, block_count, block_range, branch, &mut hash_queue).unwrap();
     drop(hash_queue);
     return hash_out.0.to_vec().into_boxed_slice();
 }
@@ -47,7 +47,7 @@ where
 fn merkle_tree_file_helper<F, T>(file: &mut BufReader<F>,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
-        hash_queue: &dyn Consumer<HashRange>)
+        hash_queue: &mut dyn Consumer<HashRange>)
         -> Option<(GenericArray<u8, T::OutputSize>, u64)>
 where
     F: Read + Seek,
