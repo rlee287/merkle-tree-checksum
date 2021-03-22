@@ -32,6 +32,8 @@ features = [ "wrap_help", "color" ]
 # We don't care about dependency internals when debugging our code
 [profile.dev.package.sha2]
 opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3
 
 [profile.release]
 debug = true
