@@ -221,7 +221,6 @@ fn run() -> i32 {
             let mut build_filename_str = String::default();
             // TODO: refactor
             loop {
-                // read_line does append
                 let (start_quote, end_quote)
                         = parse_functions::first_two_quotes(build_filename_str.as_str());
                 if let Some(i) = end_quote {
@@ -238,6 +237,7 @@ fn run() -> i32 {
                     file_vec.push(PathBuf::from(unquoted));
                     build_filename_str = build_filename_str[i+1..].to_owned();
                 } else if let Some(_) = start_quote {
+                    // read_line does append
                     if hash_file_reader.read_line(&mut build_filename_str)
                             .is_err() {
                         eprintln!("Error: unterminated quote at EOF");
@@ -259,6 +259,7 @@ fn run() -> i32 {
                     build_filename_str += next_line.as_str();
                 }
             }
+            assert!(is_short_hash == list_begin_pos.is_some());
             if list_begin_pos.is_some() {
                 hash_file_reader.seek(SeekFrom::Start(list_begin_pos.unwrap())).unwrap();
             }
