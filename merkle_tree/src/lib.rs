@@ -168,6 +168,7 @@ where
 {
     pub fn new(branch_factor: u16, max_block_count: u64)
             -> TreeVerificationHelper<D> {
+        assert!(branch_factor >= 2);
         let mut new_obj = TreeVerificationHelper::<D> {
             dummy_element: std::marker::PhantomData::<D>::default(),
             branch_factor: branch_factor,
@@ -178,8 +179,11 @@ where
         };
         let mut size_iter = 1;
         while size_iter <= max_block_count {
-            new_obj.entry_map_read.insert(size_iter, BTreeMap::new()).unwrap();
-            new_obj.entry_map_calc.insert(size_iter, BTreeMap::new()).unwrap();
+            // Ensure that entries do not already exist
+            new_obj.entry_map_read.insert(size_iter, BTreeMap::new())
+                    .ok_or(()).unwrap_err();
+            new_obj.entry_map_calc.insert(size_iter, BTreeMap::new())
+                    .ok_or(()).unwrap_err();
             size_iter *= branch_factor as u64;
         }
         debug_assert_eq!(size_iter, exp_ceil_log(max_block_count, branch_factor));
