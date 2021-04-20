@@ -3,6 +3,8 @@
 use std::fmt;
 use std::io::{Seek, SeekFrom};
 
+use std::ops::{RangeBounds, Bound, RangeInclusive, Range};
+
 pub(crate) const fn ceil_div(num: u64, denom: u64) -> u64 {
     let result = num / denom;
     // return
@@ -68,6 +70,34 @@ impl BlockRange {
             true => init_range + 1,
             false => init_range
         }
+    }
+}
+
+impl From<RangeInclusive<u64>> for BlockRange {
+    fn from(value: RangeInclusive<u64>) -> Self {
+        let start_val: u64 = match value.start_bound() {
+            Bound::Included(val) => *val,
+            _ => unreachable!()
+        };
+        let end_val: u64 = match value.end_bound() {
+            Bound::Included(val) => *val,
+            _ => unreachable!()
+        };
+        BlockRange::new(start_val, end_val, true)
+    }
+}
+
+impl From<Range<u64>> for BlockRange {
+    fn from(value: Range<u64>) -> Self {
+        let start_val: u64 = match value.start_bound() {
+            Bound::Included(val) => *val,
+            _ => unreachable!()
+        };
+        let end_val: u64 = match value.end_bound() {
+            Bound::Excluded(val) => val-1,
+            _ => unreachable!()
+        };
+        BlockRange::new(start_val, end_val, true)
     }
 }
 
