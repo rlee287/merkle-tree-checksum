@@ -21,7 +21,7 @@ use std::io::{self, Write, BufWriter};
 use std::path::{Path,PathBuf};
 
 use crc32_utils::Crc32;
-use sha2::{Sha224, Sha256, Sha384, Sha512};
+use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use merkle_tree::merkle_hash_file;
 use utils::MpscConsumer;
 
@@ -36,7 +36,9 @@ arg_enum!{
         sha224,
         sha256,
         sha384,
-        sha512
+        sha512,
+        sha512trunc224,
+        sha512trunc256
     }
 }
 
@@ -199,6 +201,8 @@ fn run() -> i32 {
         HashFunctions::sha256 => merkle_hash_file::<Sha256,HashConsumer>,
         HashFunctions::sha384 => merkle_hash_file::<Sha384,HashConsumer>,
         HashFunctions::sha512 => merkle_hash_file::<Sha512,HashConsumer>,
+        HashFunctions::sha512trunc224 => merkle_hash_file::<Sha512Trunc224,HashConsumer>,
+        HashFunctions::sha512trunc256 => merkle_hash_file::<Sha512Trunc256,HashConsumer>,
     };
 
     if hash_enum == HashFunctions::crc32
