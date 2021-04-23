@@ -23,7 +23,7 @@ use parse_functions::ParsingErrors;
 use std::path::{Path,PathBuf};
 
 use crc32_utils::Crc32;
-use sha2::{Sha224, Sha256, Sha384, Sha512};
+use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use merkle_tree::merkle_hash_file;
 use utils::HashFunctions;
 use utils::MpscConsumer;
@@ -367,6 +367,10 @@ fn run() -> i32 {
             merkle_hash_file::<ProgressBarWrap<File>,Sha384,HashConsumer>,
         HashFunctions::sha512 =>
             merkle_hash_file::<ProgressBarWrap<File>,Sha512,HashConsumer>,
+        HashFunctions::sha512trunc224 =>
+            merkle_hash_file::<ProgressBarWrap<File>,Sha512Trunc224,HashConsumer>,
+        HashFunctions::sha512trunc256 =>
+            merkle_hash_file::<ProgressBarWrap<File>,Sha512Trunc256,HashConsumer>,
     };
 
     if !is_quiet && hash_enum == HashFunctions::crc32

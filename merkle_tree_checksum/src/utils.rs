@@ -17,7 +17,9 @@ arg_enum!{
         sha224,
         sha256,
         sha384,
-        sha512
+        sha512,
+        sha512trunc224,
+        sha512trunc256
     }
 }
 
