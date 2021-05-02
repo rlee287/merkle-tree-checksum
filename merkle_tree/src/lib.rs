@@ -121,7 +121,7 @@ where
         let start_block = block_range.start;
         let start_byte = block_range.start*block_size as u64;
         let end_block = block_range.end-1;
-        let end_byte_file = match current_seek_pos(file) {
+        let end_byte_file = match current_pos {
             0 => 0,
             val => val - 1
         };
