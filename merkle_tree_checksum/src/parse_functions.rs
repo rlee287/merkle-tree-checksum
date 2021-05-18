@@ -19,12 +19,9 @@ pub(crate) fn first_two_quotes(s: &str) -> (Option<usize>, Option<usize>) {
     let mut result_tuple: (Option<usize>, Option<usize>) = (None, None);
     result_tuple.0 = s.find('"');
     if let Some(i) = result_tuple.0 {
-        result_tuple.1 = match s[i+1..].find('"') {
-            None => None,
-            Some(val) => Some(val+i+1)
-        }
+        result_tuple.1 = s[i+1..].find('"').map(|val| val+i+1)
     }
-    return result_tuple;
+    result_tuple
 }
 
 // Contents of working_str is the line after comments
@@ -42,7 +39,7 @@ pub(crate) fn next_noncomment_line(reader: &mut dyn BufRead) -> io::Result<Strin
     }
 }
 
-pub(crate) fn check_version_line(version_line: &String)
+pub(crate) fn check_version_line(version_line: &str)
         -> Result<Version, ParsingErrors> {
     let mut version_str_iter = version_line.split_whitespace();
     let version_obj: Option<Version>;
@@ -99,8 +96,8 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
     let mut hash_function_result: Result<HashFunctions, ParsingErrors>
             = Err(ParsingErrors::MissingParameter);
     let mut other_errors: Vec<ParsingErrors> = Vec::new();
-    for i in 0..3 {
-        let string_split: Vec<&str> = string_arr[i].split(":").collect();
+    for string_element in string_arr {
+        let string_split: Vec<&str> = string_element.split(':').collect();
         if string_split.len() != 2 {
             other_errors.push(ParsingErrors::MalformedFile);
             break;
