@@ -120,7 +120,7 @@ fn run() -> i32 {
             (Result<Vec<PathBuf>, String>, u32, u16, bool, HashFunctions)
             = match cmd_chosen {
         HashCommand::GenerateHash => {
-            let file_vec = Vec::from_iter(cmd_matches.values_of("FILES").unwrap());
+            let file_vec = cmd_matches.values_of("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
                 utils::get_file_list(file_vec),
