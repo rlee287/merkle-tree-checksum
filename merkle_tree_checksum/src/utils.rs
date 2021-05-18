@@ -2,7 +2,6 @@
 
 extern crate merkle_tree;
 use std::fmt::Write as FmtWrite;
-use std::iter::FromIterator;
 
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -10,7 +9,7 @@ use walkdir::WalkDir;
 use std::sync::mpsc;
 
 pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
-    let name_chars = Vec::from_iter(name.chars());
+    let name_chars = name.chars().collect::<Vec<_>>();
     if name.len() <= len_threshold {
         // TODO: is copy avoidable?
         return name.to_owned();
