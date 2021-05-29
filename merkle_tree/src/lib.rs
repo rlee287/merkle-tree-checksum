@@ -10,7 +10,8 @@ use num_iter::{range_step, range_step_inclusive};
 
 use digest::Digest;
 use generic_array::GenericArray;
-use std::collections::BTreeMap;
+use std::collections::{BTreeSet, BTreeMap};
+use range_union_find::{IntRangeUnionFind, OverlapType};
 
 use merkle_utils::*;
 pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
@@ -150,16 +151,20 @@ where
 {
     dummy_element: std::marker::PhantomData<D>,
     branch_factor: u16,
-    max_block_count: u64,
-    blocks_inserted: u64,
+    // Location bound sanity checks when inserting nodes
+    max_block_count: BTreeMap<u64, u64>,
+    // Tracks nodes that have been verified
+    blocks_checked: BTreeMap<u64, IntRangeUnionFind<u64>>,
+    // Tracks nodes no longer needed (GC'ed) after being calculated with
+    blocks_gc: BTreeMap<u64, IntRangeUnionFind<u64>>,
     /*
      * Key is block_size, value is block_start->Option<(used,hash_value)>
      * Once a hash_value is checked, it can be deleted
      * We definitely need inner map sorting property
      * Outer map sorting property not needed, but range_mut avoids need for (unsafe) split_at_mut type construction
      */
-    entry_map_read: BTreeMap<u64, BTreeMap<u64, Option<Box<[u8]>>>>,
-    entry_map_calc: BTreeMap<u64, BTreeMap<u64, Option<Box<[u8]>>>>
+    entry_map_file: BTreeMap<u64, BTreeMap<u64, digest::Output<D>>>,
+    entry_map_calc: BTreeMap<u64, BTreeMap<u64, digest::Output<D>>>
 }
 
 impl<D> TreeVerificationHelper<D>
@@ -169,195 +174,228 @@ where
     pub fn new(branch_factor: u16, max_block_count: u64)
             -> TreeVerificationHelper<D> {
         assert!(branch_factor >= 2);
-        let mut new_obj = TreeVerificationHelper::<D> {
-            dummy_element: std::marker::PhantomData::<D>::default(),
-            branch_factor: branch_factor,
-            max_block_count: max_block_count,
-            blocks_inserted: 0,
-            entry_map_read: BTreeMap::new(),
-            entry_map_calc: BTreeMap::new()
-        };
         let mut size_iter = 1;
+        let mut block_counter = max_block_count;
+        let mut entry_map_file = BTreeMap::new();
+        let mut entry_map_calc = BTreeMap::new();
+        let mut max_block_count_map = BTreeMap::new();
+        let mut blocks_checked = BTreeMap::new();
+        let mut blocks_gced = BTreeMap::new();
         while size_iter <= max_block_count {
             // Ensure that entries do not already exist
-            new_obj.entry_map_read.insert(size_iter, BTreeMap::new())
+            entry_map_file.insert(size_iter, BTreeMap::new())
                     .ok_or(()).unwrap_err();
-            new_obj.entry_map_calc.insert(size_iter, BTreeMap::new())
+            entry_map_calc.insert(size_iter, BTreeMap::new())
                     .ok_or(()).unwrap_err();
+            max_block_count_map.insert(size_iter, block_counter)
+                    .ok_or(()).unwrap_err();
+            blocks_checked.insert(size_iter, IntRangeUnionFind::new())
+                    .ok_or(()).unwrap_err();
+            blocks_gced.insert(size_iter, IntRangeUnionFind::new())
+                    .ok_or(()).unwrap_err();
+            block_counter = ceil_div(block_counter, branch_factor as u64);
             size_iter *= branch_factor as u64;
         }
         debug_assert_eq!(size_iter, exp_ceil_log(max_block_count, branch_factor));
-        return new_obj;
+        debug_assert_eq!(block_counter, 1);
+        TreeVerificationHelper::<D> {
+            dummy_element: std::marker::PhantomData::<D>::default(),
+            branch_factor: branch_factor,
+            max_block_count: max_block_count_map,
+            blocks_checked: blocks_checked,
+            blocks_gc: blocks_gced,
+            entry_map_file: entry_map_file,
+            entry_map_calc: entry_map_calc
+        }
     }
 
-    // When inserting items into the tree, we want to take ownership on success
-    // And return the object back to the previous context upon failure
-    pub fn insert_leaf_hash(&mut self, leaf_hash: HashRange) -> Result<(), HashRange> {
-        if leaf_hash.block_range.range() != 1 || leaf_hash.block_range.start >= self.max_block_count {
-            return Err(leaf_hash);
+    // Inserts a hash, calculated from a data block
+    pub fn insert_leaf_calc_hash(&mut self, loc: u64, data: &[u8]) -> Result<(), ()> {
+        // loc >= 0 by u64 type
+        if loc >= *self.max_block_count.get(&1).unwrap() {
+            return Err(());
         }
-        if leaf_hash.hash_result.len() != D::output_size() {
-            return Err(leaf_hash);
-        }
-        let read_map = self.entry_map_read.get_mut(&1).unwrap();
         let calc_map = self.entry_map_calc.get_mut(&1).unwrap();
-        assert_eq!(read_map.len(), calc_map.len());
-        let block_start = leaf_hash.block_range.start;
-        if read_map.contains_key(&block_start)
-                || calc_map.contains_key(&block_start) {
-            return Err(leaf_hash);
+        let blocks_deleted = self.blocks_gc.get(&1).unwrap();
+        if calc_map.contains_key(&loc)
+                || blocks_deleted.element_contained(&loc) {
+            return Err(());
         }
-        assert!(self.blocks_inserted <= read_map.len().try_into().unwrap());
-        let hash_result = leaf_hash.hash_result;
-        // TODO: Rc, but only for the first level?
-        read_map.insert(block_start,
-            Some(hash_result.clone()));
-        calc_map.insert(block_start,
-            Some(hash_result));
-        self.blocks_inserted += 1;
+        calc_map.insert(loc, D::digest(data));
         return Ok(());
     }
-    pub fn insert_nonleaf_read_hash(&mut self, nonleaf_hash: HashRange) -> Result<(), HashRange> {
-        let block_range_size = nonleaf_hash.block_range.range();
+    // Inserts a hash which was previously read from the hash file
+    // When inserting items into the tree, we want to take ownership on success
+    // And return the object back to the previous context upon failure
+    pub fn insert_file_hash(&mut self, file_hash: HashRange) -> Result<(), HashRange> {
+        let block_range_size = file_hash.block_range.range();
         if exp_ceil_log(block_range_size, self.branch_factor) != block_range_size {
-            return Err(nonleaf_hash);
+            return Err(file_hash);
         }
-        if nonleaf_hash.block_range.start >= self.max_block_count
-                || nonleaf_hash.block_range.start % block_range_size != 0 {
-            return Err(nonleaf_hash);
+        let block_start = file_hash.block_range.start;
+        let block_end = match file_hash.block_range.include_end {
+            true => file_hash.block_range.end,
+            false => file_hash.block_range.end - 1
+        };
+        // block_start >= 0 by u64 type
+        if block_start >= *self.max_block_count.get(&block_range_size).unwrap()
+                || block_start % block_range_size != 0 {
+            return Err(file_hash);
         }
-        let block_start = nonleaf_hash.block_range.start;
-        if nonleaf_hash.hash_result.len() != D::output_size() {
-            return Err(nonleaf_hash);
+        if file_hash.hash_result.len() != D::output_size() {
+            return Err(file_hash);
         }
-        let read_map = self.entry_map_read.get_mut(&block_range_size).unwrap();
-        if read_map.contains_key(&block_start) {
-            return Err(nonleaf_hash);
+        let file_map = self.entry_map_file.get_mut(&block_range_size).unwrap();
+        let blocks_deleted = self.blocks_checked.get(&block_range_size).unwrap();
+        let range_containment = blocks_deleted.range_contained(&(block_start..=block_end)).unwrap();
+        if file_map.contains_key(&block_start) 
+                || range_containment == OverlapType::Contained {
+            return Err(file_hash);
         }
-        let hash_result = nonleaf_hash.hash_result;
-        read_map.insert(block_start, Some(hash_result));
+        assert_eq!(range_containment, OverlapType::Disjoint);
+        let hash_result = GenericArray::from_exact_iter(
+            file_hash.hash_result.into_vec()).unwrap();
+        file_map.insert(block_start, hash_result);
         return Ok(());
+    }
+
+    fn nodes_equal(&self, start_pos: u64, size: u64) -> Option<bool> {
+        assert_eq!(start_pos % size, 0);
+        let file_entries = self.entry_map_file.get(&size).unwrap();
+        let file_entry = file_entries.get(&start_pos)?;
+        let calc_entries = self.entry_map_calc.get(&size).unwrap();
+        let calc_entry = calc_entries.get(&start_pos)?;
+        Some(file_entry == calc_entry)
     }
 
     // OK(bool): verification OK, true when no more hashes to verify
     // Err(BlockRange): the range which has a mismatched hash
+    // This should definitely be split into yield+coroutines
+    // TODO: rewrite all
     pub fn calc_and_verify(&mut self) -> Result<bool, BlockRange> {
+        let max_leaf_count = *self.max_block_count.get(&1).unwrap();
+
         let mut scan_size_iter: u64 = 1;
-        while !self.entry_map_calc.contains_key(&scan_size_iter) {
-            scan_size_iter *= self.branch_factor as u64;
-            assert!(scan_size_iter <= self.max_block_count);
-        }
-        if scan_size_iter == exp_ceil_log(
-                self.max_block_count, self.branch_factor) {
-            return Ok(true);
-        }
-        let mut range_size_next = scan_size_iter * self.branch_factor as u64;
-        while range_size_next <= self.max_block_count {
+        let mut range_size_next = self.branch_factor as u64;
+
+        // HashSet instead?
+        let mut blocks_del: BTreeSet<u64> = BTreeSet::new();
+        while range_size_next <= max_leaf_count {
+            debug_assert!(scan_size_iter * self.branch_factor as u64 == range_size_next);
+            // Get the dictionary entries
             let mut iter_extract = self.entry_map_calc.range_mut(
                     scan_size_iter..=range_size_next);
-            let (_, scan_dict) = iter_extract.next().unwrap();
-            let (_, insert_dict) = iter_extract.next().unwrap();
-            assert!(iter_extract.next().is_none());
+            let (_, scan_calc_dict) = iter_extract.next().unwrap();
+            let (_, insert_calc_dict) = iter_extract.next().unwrap();
+            debug_assert!(iter_extract.next().is_none());
             drop(iter_extract);
 
-            // Start list to concatenate
-            let mut blocks_concat: Vec<&[u8]>
-                    = Vec::with_capacity(self.branch_factor.into());
+            let ranges_checked = self.blocks_checked.get_mut(&scan_size_iter).unwrap();
+            let ranges_gced = self.blocks_gc.get_mut(&scan_size_iter).unwrap();
+
             // Index to insert at higher level
             let mut blocks_concat_start: Option<u64> = None;
-            // Detect if all remaining entries are None
-            let mut has_some_at_level = false;
-            let mut blocks_del: Vec<u64> = Vec::new();
-            for (&block_start, hash_box) in scan_dict.iter() {
-                if hash_box.is_none() {
-                    continue;
+            let mut consecutive_run_ctr: u16 = 0;
+
+            for (&iter_block_start, hash_calc_box) in scan_calc_dict.iter() {
+                // Check existing hashes against hash file
+                if !ranges_checked.element_contained(&iter_block_start) {
+                    let file_dict = self.entry_map_file.get_mut(&scan_size_iter).unwrap();
+                    let range_blocks = iter_block_start..iter_block_start+scan_size_iter;
+                    let file_hash = file_dict.get(&iter_block_start);
+                    if file_hash.is_some() {
+                        if file_hash.unwrap() == hash_calc_box {
+                            file_dict.remove(&iter_block_start).unwrap();
+                            ranges_checked.insert_range(&range_blocks).unwrap();
+                        } else {
+                            return Err(BlockRange::from(range_blocks));
+                        }
+                    }
                 }
-                if blocks_concat.len() == 0 {
+                // TODO: insert check for Ok(true)
+                if consecutive_run_ctr == 0 {
                     // Start combining list
                     debug_assert!(blocks_concat_start.is_none());
-                    if block_start % range_size_next == 0 {
-                        let hash_get = hash_box.as_ref();
-                        blocks_concat.push(hash_get.unwrap().as_ref());
-                        blocks_concat_start = Some(block_start);
+                    if iter_block_start % range_size_next == 0 {
+                        blocks_concat_start = Some(iter_block_start);
                     } else {
                         continue;
                     }
                 } else {
                     debug_assert!(blocks_concat_start.is_some());
-                    let offset: u64 = blocks_concat.len().try_into().unwrap();
-                    let expected_pos = blocks_concat_start.unwrap()
-                            + offset * scan_size_iter;
+                    let blocks_start_raw = blocks_concat_start.unwrap();
+                    let expected_pos = blocks_start_raw
+                            + consecutive_run_ctr as u64 * scan_size_iter;
                     // Is the next block a continuation?
-                    if block_start == expected_pos {
-                        // Add it into the list
-                        let hash_get = hash_box.as_ref();
-                        blocks_concat.push(hash_get.unwrap().as_ref());
-                        debug_assert!(blocks_concat.len() <= self.branch_factor.into());
+                    if iter_block_start == expected_pos {
+                        consecutive_run_ctr += 1;
+                        debug_assert!(consecutive_run_ctr <= self.branch_factor);
 
-                        let block_end = block_start + scan_size_iter;
+                        let iter_block_end = iter_block_start + scan_size_iter;
                         // Done concatenating if full length or EOF
-                        if blocks_concat.len() == self.branch_factor.into()
-                                || block_end >= self.max_block_count {
+                        if consecutive_run_ctr == self.branch_factor
+                                || iter_block_end >= max_leaf_count {
                             // Compute combined hash and insert into next level
-                            let mut hash_input = blocks_concat.concat();
+                            let mut hash_input = range_step(
+                                blocks_start_raw,
+                                iter_block_end,
+                                scan_size_iter)
+                                .map(|index| scan_calc_dict.get(&index).unwrap().as_ref())
+                                .collect::<Vec<&[u8]>>()
+                                .concat();
                             hash_input.insert(0, 0x01);
                             let hash_result_arr = D::digest(hash_input.as_slice());
-
-                            let hash_result_box = hash_result_arr.to_vec().into_boxed_slice();
-                            // Verify that next-level hash matches
-                            let hash_ref = self.entry_map_read
+                            // Verify that next-level hash matches?
+                            /*let hash_ref = self.entry_map_file
                                 .get(&scan_size_iter).unwrap()
-                                .get(&blocks_concat_start.unwrap()).unwrap()
-                                .as_ref().unwrap();
-                            if *hash_ref != hash_result_box {
+                                .get(&blocks_concat_start.unwrap()).unwrap();
+                            if *hash_ref != hash_result_arr {
                                 return Err(BlockRange::new(
                                     blocks_concat_start.unwrap(),
-                                    blocks_concat_start.unwrap()+range_size_next-1,
-                                    true
+                                    blocks_concat_start.unwrap()+range_size_next,
+                                    false
                                 ))
-                            }
+                            }*/
 
                             // Insert new hash and mark old ones for deletion
-                            insert_dict.insert(blocks_concat_start.unwrap(), Some(hash_result_box));
+                            insert_calc_dict.insert(blocks_concat_start.unwrap(), hash_result_arr);
                             for block_del in range_step_inclusive(
                                     blocks_concat_start.unwrap(),
-                                    block_start, scan_size_iter) {
-                                blocks_del.push(block_del);
+                                    iter_block_start, scan_size_iter) {
+                                blocks_del.insert(block_del);
                             }
                         }
                     } else {
-                        blocks_concat.clear();
+                        consecutive_run_ctr = 0;
                         blocks_concat_start = None;
-                        if hash_box.as_ref().is_some() {
-                            // Only set this if we actually have elements left
-                            has_some_at_level = true;
-                        }
                         continue;
                     }
                 }
             }
             // Handle partial concatenation at end here
-            if !blocks_concat.is_empty() {
+            /*if consecutive_run_ctr != 0 {
                 // Only set this if we actually have elements left
-                has_some_at_level = true;
-            }
-            blocks_concat.clear();
+                consecutive_run_ctr = 0;
+            }*/
             // blocks_concat_start = None;
 
-            let ref_dict = self.entry_map_read.get_mut(&scan_size_iter).unwrap();
-            for block_del in blocks_del {
-                // The unwrap already asserts entry was from map
-                scan_dict.insert(block_del, None).unwrap();
-                ref_dict.insert(block_del, None).unwrap();
+            let mut actually_removed: BTreeSet<u64> = BTreeSet::new();
+            for block_del in blocks_del.iter() {
+                // The unwrap already asserts entry was in map
+                if ranges_checked.element_contained(block_del) {
+                    ranges_gced.insert_range(&(block_del..=block_del)).unwrap();
+                    scan_calc_dict.remove(&block_del).unwrap();
+                    actually_removed.insert(*block_del);
+                }
             }
-            // Second condition: no more blocks will be read in?
-            /*if !has_some_at_level
-                    && self.blocks_inserted == self.max_block_count {
-                self.entry_map_calc.remove(&scan_size_iter).unwrap();
-            }*/
+            blocks_del = &blocks_del - &actually_removed;
+
+
             scan_size_iter *= self.branch_factor as u64;
             range_size_next *= self.branch_factor as u64;
         }
+        //let clog_leaf_count = exp_ceil_log(max_leaf_count, self.branch_factor);
+        // TODO: check that everything has been deleted as redundant
         return Ok(false);
     }
 }
