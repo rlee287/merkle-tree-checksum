@@ -3,7 +3,7 @@
 mod merkle_utils;
 
 use std::io::prelude::*;
-use std::io::BufReader;
+use std::io::{BufReader, SeekFrom};
 use std::cmp::min;
 use std::convert::TryInto;
 use num_iter::{range_step, range_step_inclusive};
@@ -25,6 +25,7 @@ where
     D: Digest,
     C: Consumer<HashRange>
 {
+    file.seek(SeekFrom::Start(0)).unwrap();
     let file_len = seek_len(&mut file);
     let block_count = match ceil_div(file_len, block_size.into()) {
         0 => 1,
