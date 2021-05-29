@@ -10,7 +10,6 @@ mod utils;
 mod parse_functions;
 
 use std::convert::AsMut;
-use std::iter::FromIterator;
 use std::cmp::min;
 use std::thread;
 use std::sync::mpsc;
@@ -172,6 +171,7 @@ fn run() -> i32 {
             let mut hash_param_arr = [String::default(), String::default(), String::default()];
             for i in 0..3 {
                 let line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
+                assert!(line.chars().last().unwrap() == '\n');
                 // Slice to remove newline
                 hash_param_arr[i] = line[..line.len()-1].to_string();
             }
