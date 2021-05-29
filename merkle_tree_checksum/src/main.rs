@@ -52,11 +52,11 @@ enum HashCommand {
 }
 
 fn main() {
-    let status_code = run(std::env::args_os());
+    let status_code = run(&mut std::env::args_os());
     std::process::exit(status_code);
 }
 
-pub(crate) fn run(argv: std::env::ArgsOs) -> i32 {
+pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
