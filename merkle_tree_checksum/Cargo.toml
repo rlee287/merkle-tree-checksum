@@ -12,9 +12,9 @@ publish = false
 #clap = "~2.33.3"
 walkdir = "2.3.1"
 chrono = "0.4.19"
-indicatif = "0.15.0"
+indicatif = "0.16.0"
 enquote = "1.0.3"
-semver = "0.11.0"
+semver = "1.0.0"
 
 #crc32-digest uses an outdated version of the Digest trait
 digest = "0.9"

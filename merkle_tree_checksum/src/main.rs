@@ -28,7 +28,7 @@ use utils::HashFunctions;
 use utils::MpscConsumer;
 
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
-use indicatif::{ProgressBar, ProgressStyle, ProgressBarWrap,
+use indicatif::{ProgressBar, ProgressStyle, ProgressBarIter,
     ProgressDrawTarget, MultiProgress};
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
@@ -358,19 +358,19 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
     type HashConsumer = MpscConsumer<merkle_tree::HashRange>;
     let merkle_tree_thunk = match hash_enum {
         HashFunctions::crc32 =>
-            merkle_hash_file::<ProgressBarWrap<File>,Crc32,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<File>,Crc32,HashConsumer>,
         HashFunctions::sha224 =>
-            merkle_hash_file::<ProgressBarWrap<File>,Sha224,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<File>,Sha224,HashConsumer>,
         HashFunctions::sha256 =>
-            merkle_hash_file::<ProgressBarWrap<File>,Sha256,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<File>,Sha256,HashConsumer>,
         HashFunctions::sha384 =>
-            merkle_hash_file::<ProgressBarWrap<File>,Sha384,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<File>,Sha384,HashConsumer>,
         HashFunctions::sha512 =>
-            merkle_hash_file::<ProgressBarWrap<File>,Sha512,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<File>,Sha512,HashConsumer>,
         HashFunctions::sha512trunc224 =>
-            merkle_hash_file::<ProgressBarWrap<File>,Sha512Trunc224,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<File>,Sha512Trunc224,HashConsumer>,
         HashFunctions::sha512trunc256 =>
-            merkle_hash_file::<ProgressBarWrap<File>,Sha512Trunc256,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<File>,Sha512Trunc256,HashConsumer>,
     };
 
     if !is_quiet && hash_enum == HashFunctions::crc32
@@ -393,7 +393,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
         let file_size = file_obj.metadata().unwrap().len();
         let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor).unwrap();
         let pb_file_style = ProgressStyle::default_bar()
-        .template("{msg:24!} {bytes:>8}/{total_bytes:8} | {bytes_per_sec:>9}");
+        .template("{msg:24!} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>9}");
         let pb_hash_style = ProgressStyle::default_bar()
             .template("{msg:24!} {pos:>8}/{len:8} | {per_sec:>9} [{elapsed_precise}] ETA [{eta_precise}]");
 
@@ -412,10 +412,10 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
             let abbreviated_msg = utils::abbreviate_filename(file_part, 24);
             assert!(abbreviated_msg.len() <= 24);
 
-            pb_file.set_message(&abbreviated_msg);
+            pb_file.set_message(abbreviated_msg.clone());
             pb_file.set_draw_delta((block_size*branch_factor as u32) as u64);
 
-            pb_hash.set_message(&abbreviated_msg);
+            pb_hash.set_message(abbreviated_msg);
             pb_hash.set_draw_delta(min(pb_hash_len/100, 256));
         }
 
