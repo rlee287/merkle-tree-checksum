@@ -40,6 +40,10 @@ where
     let hash_out = merkle_tree_file_helper::<F, D>(&mut file_buf,
         block_size, block_count, block_range, branch, &mut hash_queue).unwrap();
     drop(hash_queue);
+    #[cfg(debug_assertions)]
+    {
+        assert_eq!(file_len, hash_out.1);
+    }
     return hash_out.0.to_vec().into_boxed_slice();
 }
 
