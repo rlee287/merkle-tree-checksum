@@ -102,8 +102,7 @@ where
                     let slice_end = slice_start+block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end, false);
                     let subhash_res = merkle_tree_file_helper::<F, T>(file, block_size, block_count, slice_range, branch, hash_queue);
-                    if subhash_res.is_some() {
-                        let subhash = subhash_res.unwrap();
+                    if let Some(subhash) = subhash_res {
                         hash_vector.push(subhash.0);
                         current_pos = subhash.1;
                     } else {

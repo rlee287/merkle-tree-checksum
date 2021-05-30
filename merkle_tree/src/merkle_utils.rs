@@ -17,7 +17,7 @@ pub(crate) const fn exp_ceil_log(number: u64, base: u16) -> u64 {
     let base_as_u64: u64 = base as u64;
     let mut result = 1;
     while result < number {
-        result = result * base_as_u64;
+        result *= base_as_u64;
     }
     // return
     result
