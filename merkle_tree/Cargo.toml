@@ -13,6 +13,9 @@ generic-array = "0.14.4"
 num-iter = "0.1.42"
 range_union_find = "0.2.0"
 
+[dev-dependencies]
+sha2 = "0.9.2"
+
 # We don't care about dependency internals when debugging our code
 [profile.dev.package."*"]
 opt-level = 3
