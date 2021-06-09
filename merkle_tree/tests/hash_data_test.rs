@@ -1,11 +1,33 @@
-use merkle_tree::merkle_hash_file;
+use merkle_tree::{BlockRange, merkle_hash_file};
 
 use std::io::Cursor;
 use digest::Digest;
 use sha2::Sha256;
 
+use std::str::FromStr;
+
 mod utils;
 use utils::*;
+
+#[test]
+fn test_blockrange_str_roundtrip() {
+    let blockranges_ref = vec![BlockRange::new(0, 3, true),
+            BlockRange::new(0x12345678, 0xf0e1d2c3, false)];
+    for blockrange_ref in blockranges_ref {
+        let stringified = blockrange_ref.to_string();
+        let recovered_obj = BlockRange::from_str(&stringified).unwrap();
+        assert_eq!(blockrange_ref, recovered_obj);
+    }
+}
+
+#[test]
+fn test_blockrange_bad_str() {
+    let blockranges_str_bad = vec!["[034, 0x2124]", "[0x356, 9768)", "garbage"];
+    for bad_str in blockranges_str_bad {
+        let recovered_obj = BlockRange::from_str(&bad_str);
+        assert!(recovered_obj.is_err());
+    }
+}
 
 #[test]
 fn test_empty_string() {
