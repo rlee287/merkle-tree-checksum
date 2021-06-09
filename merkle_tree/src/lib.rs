@@ -215,7 +215,7 @@ where
         let calc_map = self.entry_map_calc.get_mut(&1).unwrap();
         let blocks_deleted = self.blocks_gc.get(&1).unwrap();
         if calc_map.contains_key(&loc)
-                || blocks_deleted.element_contained(&loc) {
+                || blocks_deleted.has_element(&loc) {
             return Err(());
         }
         calc_map.insert(loc, D::digest(data));
@@ -244,7 +244,7 @@ where
         }
         let file_map = self.entry_map_file.get_mut(&block_range_size).unwrap();
         let blocks_deleted = self.blocks_checked.get(&block_range_size).unwrap();
-        let range_containment = blocks_deleted.range_contained(&(block_start..=block_end)).unwrap();
+        let range_containment = blocks_deleted.has_range(&(block_start..=block_end)).unwrap();
         if file_map.contains_key(&block_start) 
                 || range_containment == OverlapType::Contained {
             return Err(file_hash);
@@ -296,7 +296,7 @@ where
 
             for (&iter_block_start, hash_calc_box) in scan_calc_dict.iter() {
                 // Check existing hashes against hash file
-                if !ranges_checked.element_contained(&iter_block_start) {
+                if !ranges_checked.has_element(&iter_block_start) {
                     let file_dict = self.entry_map_file.get_mut(&scan_size_iter).unwrap();
                     let range_blocks = iter_block_start..iter_block_start+scan_size_iter;
                     let file_hash_entry = file_dict.get(&iter_block_start);
@@ -379,7 +379,7 @@ where
             let mut actually_removed: BTreeSet<u64> = BTreeSet::new();
             for block_del in blocks_del.iter() {
                 // The unwrap already asserts entry was in map
-                if ranges_checked.element_contained(block_del) {
+                if ranges_checked.has_element(block_del) {
                     ranges_gced.insert_range(&(block_del..=block_del)).unwrap();
                     scan_calc_dict.remove(&block_del).unwrap();
                     actually_removed.insert(*block_del);

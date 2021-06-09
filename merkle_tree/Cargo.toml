@@ -11,7 +11,7 @@ publish = false
 digest = "0.9"
 generic-array = "0.14.4"
 num-iter = "0.1.42"
-range_union_find = "0.2.0"
+range_union_find = "0.3.0"
 
 [dev-dependencies]
 sha2 = "0.9.2"
