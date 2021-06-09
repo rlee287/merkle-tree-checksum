@@ -125,16 +125,10 @@ where
         let start_block = block_range.start;
         let start_byte = block_range.start*block_size as u64;
         let end_block = block_range.end-1;
-        let end_byte_file = match current_pos {
-            0 => 0,
-            val => val - 1
-        };
+        let end_byte_file = current_pos.saturating_sub(1);
         #[cfg(debug_assertions)]
         {
-            let end_byte_file_actual = match current_seek_pos(file) {
-                0 => 0,
-                val => val - 1
-            };
+            let end_byte_file_actual = current_seek_pos(file).saturating_sub(1);
             debug_assert_eq!(end_byte_file_actual, end_byte_file);
         }
         let block_range = BlockRange::new(start_block, end_block, true);
@@ -305,9 +299,9 @@ where
                 if !ranges_checked.element_contained(&iter_block_start) {
                     let file_dict = self.entry_map_file.get_mut(&scan_size_iter).unwrap();
                     let range_blocks = iter_block_start..iter_block_start+scan_size_iter;
-                    let file_hash = file_dict.get(&iter_block_start);
-                    if file_hash.is_some() {
-                        if file_hash.unwrap() == hash_calc_box {
+                    let file_hash_entry = file_dict.get(&iter_block_start);
+                    if let Some(file_hash) = file_hash_entry {
+                        if file_hash == hash_calc_box {
                             file_dict.remove(&iter_block_start).unwrap();
                             ranges_checked.insert_range(&range_blocks).unwrap();
                         } else {
