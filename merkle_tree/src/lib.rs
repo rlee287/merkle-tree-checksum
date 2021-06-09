@@ -4,7 +4,6 @@ mod merkle_utils;
 
 use std::io::prelude::*;
 use std::io::{BufReader, SeekFrom};
-use std::cmp::min;
 use std::convert::TryInto;
 use num_iter::{range_step, range_step_inclusive};
 
@@ -33,7 +32,7 @@ where
     };
     let effective_block_count = exp_ceil_log(block_count, branch);
 
-    let buf_size: u32 = min(block_size*(branch as u32), 16*1024*1024);
+    let buf_size: u32 = (block_size*(branch as u32)).clamp(16*1024, 1024*1024);
     let mut file_buf: BufReader<F> = BufReader::with_capacity(
         buf_size.try_into().unwrap(), file);
     let block_range = BlockRange::new(0, effective_block_count, false);
