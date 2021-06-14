@@ -193,7 +193,8 @@ where
             block_counter = ceil_div(block_counter, branch_factor as u64);
             size_iter *= branch_factor as u64;
         }
-        debug_assert_eq!(size_iter, exp_ceil_log(max_block_count, branch_factor));
+        let prev_size_iter = size_iter / branch_factor as u64;
+        debug_assert_eq!(prev_size_iter, exp_ceil_log(max_block_count, branch_factor));
         debug_assert_eq!(block_counter, 1);
         TreeVerificationHelper::<D> {
             dummy_element: std::marker::PhantomData::<D>::default(),
