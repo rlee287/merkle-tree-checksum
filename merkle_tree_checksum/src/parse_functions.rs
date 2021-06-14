@@ -3,7 +3,13 @@
 use std::io::{self, BufRead};
 use semver::{Version, VersionReq};
 
+use cached::cached;
+
+use std::str::FromStr;
+use regex::Regex;
+use hex::FromHex;
 use crate::utils::HashFunctions;
+use merkle_tree::{BlockRange, HashRange};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ParsingErrors {
@@ -142,3 +148,95 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
     return (block_size_result, branch_factor_result, hash_function_result, other_errors);
 }
 
+// Using cache instead of once-cell for future flexibility
+cached!{
+    SHORT_REGEX_CACHE;
+    fn short_hash_regex(hex_digit_count: usize) -> Regex = {
+        // hex_digits{count}  "(anything except quote | escaped quote)+"
+        let regex_str = format!("^([[:xdigit:]]{{{}}})  (\"(?:[^\"]|\\\\\")+\")$", hex_digit_count);
+        Regex::new(&regex_str).unwrap()
+    }
+}
+pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Option<(Box<[u8]>, String)> {
+    let parsing_regex = short_hash_regex(hex_digit_count);
+    let portions = parsing_regex.captures(line)?;
+    debug_assert!(portions.len() == 3);
+    let hash_hex_vec = Vec::<u8>::from_hex(&portions[1]).ok()?;
+    let quoted_name = &portions[2];
+    Some((hash_hex_vec.into_boxed_slice(), quoted_name.to_string()))
+}
+
+cached!{
+    LONG_REGEX_CACHE;
+    fn long_hash_regex(hex_digit_count: usize) -> Regex = {
+        let file_id_regex = " *([[:digit:]]+)";
+        let blockrange_regex = "\\[0x([[:xdigit:]]+)-0x([[:xdigit:]]+)(\\]|\\))";
+        let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
+        // rfile_id hexrange hexrange hex_digits{count}
+        let regex_str = format!("^{0} {1} {1} {2}$", file_id_regex, blockrange_regex, hash_regex);
+        Regex::new(&regex_str).unwrap()
+    }
+}
+pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Option<(usize, HashRange)> {
+    let parsing_regex = long_hash_regex(hex_digit_count);
+    let portions = parsing_regex.captures(line)?;
+    debug_assert!(portions.len() == 9);
+    // Use unwraps+panics as regex should ensure validity already
+    let file_id = usize::from_str(&portions[1]).unwrap();
+    let block_start = u64::from_str_radix(&portions[2], 16).unwrap();
+    let block_end = u64::from_str_radix(&portions[3], 16).unwrap();
+    let block_end_incl = match &portions[4] {
+        "]" => true,
+        ")" => false,
+        _ => unreachable!()
+    };
+    let block_range = BlockRange::new(block_start, block_end, block_end_incl);
+
+    let byte_start = u64::from_str_radix(&portions[5], 16).unwrap();
+    let byte_end = u64::from_str_radix(&portions[6], 16).unwrap();
+    let byte_end_incl = match &portions[7] {
+        "]" => true,
+        ")" => false,
+        _ => unreachable!()
+    };
+    let byte_range = BlockRange::new(byte_start, byte_end, byte_end_incl);
+
+    let hash_hex_vec = Vec::<u8>::from_hex(&portions[8]).ok()?;
+
+    let hash_range = HashRange::new(block_range, byte_range, hash_hex_vec.into_boxed_slice());
+    Some((file_id, hash_range))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_hash_regex_examples() {
+        let short_regex = short_hash_regex(8);
+        let captures_base = short_regex.captures("1f2e3d4c  \"filename_text\"").unwrap();
+        assert_eq!(captures_base.len(), 3);
+        assert_eq!(&captures_base[1], "1f2e3d4c");
+        assert_eq!(&captures_base[2], "\"filename_text\"");
+
+        let captures_w_quote = short_regex.captures("5b6a7988  \"filename with\\\" quotes\"").unwrap();
+        assert_eq!(captures_base.len(), 3);
+        assert_eq!(&captures_w_quote[1], "5b6a7988");
+        assert_eq!(&captures_w_quote[2], "\"filename with\\\" quotes\"");
+    }
+
+    #[test]
+    fn long_hash_regex_examples() {
+        let long_regex = long_hash_regex(4);
+        let captures_base = long_regex.captures("  1 [0x12-0x34] [0x56-0x78] 7f8a").unwrap();
+        assert_eq!(captures_base.len(), 9);
+        assert_eq!(&captures_base[1], "1");
+        assert_eq!(&captures_base[2], "12");
+        assert_eq!(&captures_base[3], "34");
+        assert_eq!(&captures_base[4], "]");
+        assert_eq!(&captures_base[5], "56");
+        assert_eq!(&captures_base[6], "78");
+        assert_eq!(&captures_base[7], "]");
+        assert_eq!(&captures_base[8], "7f8a");
+    }
+}
