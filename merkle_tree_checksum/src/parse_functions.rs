@@ -152,8 +152,11 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
 cached!{
     SHORT_REGEX_CACHE;
     fn short_hash_regex(hex_digit_count: usize) -> Regex = {
-        // hex_digits{count}  "(anything except quote | escaped quote)+"
-        let regex_str = format!("^([[:xdigit:]]{{{}}})  (\"(?:[^\"]|\\\\\")+\")$", hex_digit_count);
+        // hex_digits{count}  "(anything except quote | escaped quote)+" optional_newline
+        let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
+        let quoted_name_regex = "(\"(?:[^\"]|\\\\\")+\")";
+        let regex_str = format!("^{}  {}(?:\\n|\\r\\n)?$",
+            hash_regex, quoted_name_regex);
         Regex::new(&regex_str).unwrap()
     }
 }
@@ -172,8 +175,9 @@ cached!{
         let file_id_regex = " *([[:digit:]]+)";
         let blockrange_regex = "\\[0x([[:xdigit:]]+)-0x([[:xdigit:]]+)(\\]|\\))";
         let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
-        // rfile_id hexrange hexrange hex_digits{count}
-        let regex_str = format!("^{0} {1} {1} {2}$", file_id_regex, blockrange_regex, hash_regex);
+        // rfile_id hexrange hexrange hex_digits{count} optional_newline
+        let regex_str = format!("^{0} {1} {1} {2}(?:\\n|\\r\\n)?$",
+            file_id_regex, blockrange_regex, hash_regex);
         Regex::new(&regex_str).unwrap()
     }
 }
@@ -214,12 +218,12 @@ mod tests {
     #[test]
     fn short_hash_regex_examples() {
         let short_regex = short_hash_regex(8);
-        let captures_base = short_regex.captures("1f2e3d4c  \"filename_text\"").unwrap();
+        let captures_base = short_regex.captures("1f2e3d4c  \"filename_text\"\n").unwrap();
         assert_eq!(captures_base.len(), 3);
         assert_eq!(&captures_base[1], "1f2e3d4c");
         assert_eq!(&captures_base[2], "\"filename_text\"");
 
-        let captures_w_quote = short_regex.captures("5b6a7988  \"filename with\\\" quotes\"").unwrap();
+        let captures_w_quote = short_regex.captures("5b6a7988  \"filename with\\\" quotes\"\r\n").unwrap();
         assert_eq!(captures_base.len(), 3);
         assert_eq!(&captures_w_quote[1], "5b6a7988");
         assert_eq!(&captures_w_quote[2], "\"filename with\\\" quotes\"");
@@ -228,7 +232,7 @@ mod tests {
     #[test]
     fn long_hash_regex_examples() {
         let long_regex = long_hash_regex(4);
-        let captures_base = long_regex.captures("  1 [0x12-0x34] [0x56-0x78] 7f8a").unwrap();
+        let captures_base = long_regex.captures("  1 [0x12-0x34] [0x56-0x78] 7f8a\n").unwrap();
         assert_eq!(captures_base.len(), 9);
         assert_eq!(&captures_base[1], "1");
         assert_eq!(&captures_base[2], "12");
