@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
 extern crate merkle_tree;
-use std::fmt::Write as FmtWrite;
 
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
