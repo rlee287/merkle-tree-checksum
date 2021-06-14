@@ -9,18 +9,19 @@ mod crc32_utils;
 mod utils;
 mod parse_functions;
 
-use std::convert::AsMut;
 use std::cmp::min;
 use std::thread;
 use std::sync::mpsc;
 
 use chrono::Local;
 
-use std::fs::File;
-use std::io::{self, Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
-use parse_functions::ParsingErrors;
+use std::fs::{File, OpenOptions};
+use hex::ToHex;
+use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
+use parse_functions::{ParsingErrors, extract_short_hash_parts, extract_long_hash_parts};
 use std::path::{Path,PathBuf};
 
+use digest::Digest;
 use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use merkle_tree::merkle_hash_file;
@@ -38,6 +39,15 @@ const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
 enum HashCommand {
     GenerateHash,
     VerifyHash
+}
+
+enum FileHandleWrapper<W, R>
+where
+    W: Write+Send,
+    R: BufRead+Seek+Send
+{
+    Writer(Box<W>),
+    Reader(Box<R>)
 }
 
 fn main() {
@@ -75,8 +85,8 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
             })
             .help("Block size to hash over, in bytes"))
         .arg(Arg::with_name("output").long("output").short("o")
-            .takes_value(true)
-            .help("Output file (default stdout)"))
+            .takes_value(true).required(true)
+            .help("Output file"))
         .arg(Arg::with_name("short").long("short").short("s")
             .help("Write only the summary hash")
             .long_help("Write only the summary hash to the output. This will make identifying corrupted locations impossible."))
@@ -85,9 +95,9 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
     let check_hash_command = SubCommand::with_name(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
-        .arg(Arg::with_name("output").long("output").short("o")
-            .takes_value(true)
-            .help("Output file (default stdout)"))
+        .arg(Arg::with_name("failfast").long("fail-fast")
+            .help("Bail immediately on hash mismatch")
+            .long_help("Skip checking the rest of the listed files as soon as an error is detected."))
         .arg(Arg::with_name("FILE").required(true)
             .help("File containing the hashes to check"));
 
@@ -114,9 +124,8 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
         (_, _) => panic!("Invalid subcommand detected")
     };
 
-    // let mut hash_file_read: Option<Box<dyn Read + Send>> = None;
-    let (file_list_result, block_size, branch_factor, short_output, hash_enum):
-            (Result<Vec<PathBuf>, String>, u32, u16, bool, HashFunctions)
+    let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
+            (Result<Vec<PathBuf>, String>, u32, u16, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash => {
             let file_vec = cmd_matches.values_of("FILES").unwrap().collect();
@@ -129,7 +138,8 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                     .unwrap_or_else(|e| e.exit()),
                 cmd_matches.is_present("short"),
                 value_t!(cmd_matches, "hash", HashFunctions)
-                    .unwrap_or_else(|e| e.exit())
+                    .unwrap_or_else(|e| e.exit()),
+                None
             )
         },
         HashCommand::VerifyHash => {
@@ -218,6 +228,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                 ),
                 false => None
             };
+            // TODO: use regex to pull out file names?
             let mut build_filename_str = String::default();
             // TODO: refactor
             loop {
@@ -305,7 +316,9 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                         eprintln!("Error: {}", err_str);
                         return 1;
                     }
-                }
+                },
+                // We want to ensure that the seek call succeeded
+                Some(hash_file_reader.seek(SeekFrom::Current(0)).unwrap())
             )
         }
     };
@@ -316,27 +329,22 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
     }
     let file_list = file_list_result.unwrap();
 
-    // Further changes needed here, depends on verify command stuff
-    let mut out_file: Box<dyn Write + Send + Sync> = match cmd_matches.value_of("output") {
-        None => Box::new(io::stdout()),
-        Some(name) => match File::create(name) {
-            Ok(file) => Box::new(BufWriter::new(file)),
+    // Write file prelude
+    if cmd_chosen == HashCommand::GenerateHash {
+        let write_file_name = cmd_matches.value_of("output").unwrap();
+        let mut write_handle = match File::create(write_file_name) {
+            Ok(file) => file,
             Err(err) => {
                 eprintln!("Error opening file {} for writing: {}",
-                    name, err);
+                    write_file_name, err);
                 return 1
             }
-        }
-    };
-
-    if cmd_chosen == HashCommand::GenerateHash {
-        let write_handle = out_file.as_mut();
+        };
         writeln!(write_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
         writeln!(write_handle, "# Started {}", Local::now().to_rfc2822()).unwrap();
         writeln!(write_handle, "Hash function: {}", hash_enum).unwrap();
         writeln!(write_handle, "Block size: {}", block_size).unwrap();
         writeln!(write_handle, "Branching factor: {}", branch_factor).unwrap();
-        write_handle.flush().unwrap();
 
         if !short_output {
             writeln!(write_handle, "Files:").unwrap();
@@ -348,14 +356,12 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
         }
         writeln!(write_handle, "Hashes:").unwrap();
         write_handle.flush().unwrap();
-    } else {
-        // temp
-        todo!();
     }
 
     let is_quiet = matches.is_present("quiet");
 
     type HashConsumer = MpscConsumer<merkle_tree::HashRange>;
+    // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
         HashFunctions::crc32 =>
             merkle_hash_file::<ProgressBarIter<File>,Crc32,HashConsumer>,
@@ -372,14 +378,55 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
         HashFunctions::sha512trunc256 =>
             merkle_hash_file::<ProgressBarIter<File>,Sha512Trunc256,HashConsumer>,
     };
+    let expected_hash_len = match hash_enum {
+        HashFunctions::crc32 => Crc32::output_size(),
+        HashFunctions::sha224 => Sha224::output_size(),
+        HashFunctions::sha256 => Sha256::output_size(),
+        HashFunctions::sha384 => Sha384::output_size(),
+        HashFunctions::sha512 => Sha512::output_size(),
+        HashFunctions::sha512trunc224 => Sha512Trunc224::output_size(),
+        HashFunctions::sha512trunc256 => Sha512Trunc256::output_size()
+    };
 
     if !is_quiet && hash_enum == HashFunctions::crc32
             && cmd_chosen == HashCommand::GenerateHash {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
 
-    // TODO: Different actions when verifying a hash file
-    let write_handle = out_file.as_mut();
+    let mut hash_file_handle: FileHandleWrapper<_,_> = match cmd_chosen {
+        HashCommand::GenerateHash => {
+            let write_file_name = cmd_matches.value_of("output").unwrap();
+            let mut file_open_opts = OpenOptions::new();
+            file_open_opts.write(true).truncate(false);
+
+            let mut file_handle = match file_open_opts.open(write_file_name) {
+                Ok(file) => file,
+                Err(err) => {
+                    eprintln!("Error opening file {} for writing: {}",
+                        write_file_name, err);
+                    return 1
+                }
+            };
+            debug_assert!(verify_start_pos.is_none());
+            // Seek past the header we wrote earlier
+            // TODO: move the header writing here instead?
+            file_handle.seek(SeekFrom::End(0)).unwrap();
+            FileHandleWrapper::Writer(Box::new(BufWriter::new(file_handle)))
+        },
+        HashCommand::VerifyHash => {
+            let read_file_name = cmd_matches.value_of("FILE").unwrap();
+            let mut hash_file = match File::open(read_file_name) {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!("Error opening hash file {}: {}",
+                            read_file_name, e);
+                    return 1;
+                }
+            };
+            hash_file.seek(SeekFrom::Start(verify_start_pos.unwrap())).unwrap();
+            FileHandleWrapper::Reader(Box::new(BufReader::new(hash_file)))
+        }
+    };
     for (file_index, file_name) in file_list.iter().enumerate() {
         let filename_str = file_name.to_str().unwrap();
         let file_obj = match File::open(file_name.to_owned()) {
@@ -438,29 +485,107 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                 result
             })
             .unwrap();
+
+        let cleanup_pb_closure = || {
+            pb_hash.finish_at_current_pos();
+            pb_thread_handle.join().unwrap();
+            if !is_quiet {
+                assert_eq!(pb_hash.position(), pb_hash.length());
+            }
+        };
+        // TODO: handle arbitarily out-of-order entries
         for block_hash in rx.into_iter() {
             pb_hash.inc(1);
             if !short_output {
-                // {file_index} [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
-                writeln!(write_handle,"{:3} {} {} {}",
-                    file_index,
-                    block_hash.block_range,
-                    block_hash.byte_range,
-                    hex::encode(&block_hash.hash_result)).unwrap();
+                match cmd_chosen {
+                    HashCommand::GenerateHash => {
+                        if let FileHandleWrapper::Writer(w) = &mut hash_file_handle {
+                            // {file_index} [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
+                            writeln!(w, "{:3} {} {} {}",
+                                file_index,
+                                block_hash.block_range,
+                                block_hash.byte_range,
+                                hex::encode(&block_hash.hash_result)).unwrap();
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    HashCommand::VerifyHash => {
+                        if let FileHandleWrapper::Reader(r) = &mut hash_file_handle {
+                            let mut line = String::new();
+                            r.read_line(&mut line).unwrap();
+
+                            let hash_parts = extract_long_hash_parts(
+                                &line, 2*expected_hash_len);
+                            if let Some((file_id, file_hash_range)) = hash_parts {
+                                if file_id != file_index {
+                                    // TODO
+                                    eprintln!("Error: hash file has unsupported out-of-order entry");
+                                    cleanup_pb_closure();
+                                    return 2;
+                                }
+                                todo!();
+                            } else {
+                                eprintln!("Error: hash file has malformed entry {}", line);
+                                cleanup_pb_closure();
+                                return 2;
+                            }
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                }
             }
             thread::yield_now();
         }
-        pb_hash.finish_at_current_pos();
+        cleanup_pb_closure();
         let final_hash = thread_handle.join().unwrap();
-        pb_thread_handle.join().unwrap();
         if short_output {
-            writeln!(write_handle, "{}  {}",
-                hex::encode(final_hash.as_ref()),
-                enquote::enquote('"',filename_str)).unwrap();
-        }
-        write_handle.flush().unwrap();
-        if !is_quiet {
-            assert_eq!(pb_hash.position(), pb_hash.length());
+            match cmd_chosen {
+                HashCommand::GenerateHash => {
+                    if let FileHandleWrapper::Writer(w) = &mut hash_file_handle {
+                        writeln!(w, "{}  {}",
+                            hex::encode(final_hash.as_ref()),
+                            enquote::enquote('"',filename_str)).unwrap();
+                        w.flush().unwrap();
+                    } else {
+                        unreachable!()
+                    }
+                },
+                HashCommand::VerifyHash => {
+                    if let FileHandleWrapper::Reader(r) = &mut hash_file_handle {
+                        let mut line = String::new();
+                        r.read_line(&mut line).unwrap();
+
+                        let hash_parts = extract_short_hash_parts(&line, 2*expected_hash_len);
+                        if let Some((file_hash_box, quoted_name)) = hash_parts {
+                            // Error: assert breaks with newlines
+                            // TODO: newline escaping earlier
+                            assert_eq!(filename_str,
+                                enquote::unquote(&quoted_name).unwrap());
+                            // Use quoted version for ease of parsing
+                            if final_hash == file_hash_box {
+                                eprintln!("Info: {} hash matches", quoted_name);
+                            } else {
+                                eprint!("Error: {} has hash mismatch:\n  stored: {}\n  computed: {}\n",
+                                    quoted_name,
+                                    Vec::<u8>::encode_hex::<String>(&file_hash_box.into_vec()),
+                                    Vec::<u8>::encode_hex::<String>(&final_hash.into_vec()));
+                                if cmd_matches.is_present("failfast") {
+                                    continue;
+                                } else {
+                                    return 2;
+                                }
+                            }
+                        } else {
+                            eprintln!("Error: hash file has malformed entry {}", line);
+                            return 2;
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                }
+            }
         }
     }
     return 0;
