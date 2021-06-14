@@ -431,8 +431,8 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
-                let wrap = pb_file.wrap_read(file_obj);
-                let result = merkle_tree_thunk(wrap,
+                let pb_wrap = pb_file.wrap_read(file_obj);
+                let result = merkle_tree_thunk(pb_wrap,
                     block_size, branch_factor, tx_wrap);
                 pb_file.finish_at_current_pos();
                 result
