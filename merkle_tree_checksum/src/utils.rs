@@ -42,14 +42,6 @@ pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     }
 }
 
-pub fn arr_to_hex_str(arr: &[u8]) -> String {
-    let mut return_str: String = "".to_string();
-    for byte_val in arr {
-        write!(return_str, "{:02x}", byte_val).unwrap();
-    }
-    return return_str;
-}
-
 pub(crate) fn get_file_list(file_strs: Vec<&str>) -> Result<Vec<PathBuf>,String> {
     let mut file_list = Vec::<PathBuf>::new();
     for file_str in file_strs {

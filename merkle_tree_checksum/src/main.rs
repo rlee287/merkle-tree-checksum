@@ -446,7 +446,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                     file_index,
                     block_hash.block_range,
                     block_hash.byte_range,
-                    utils::arr_to_hex_str(&block_hash.hash_result)).unwrap();
+                    hex::encode(&block_hash.hash_result)).unwrap();
             }
             thread::yield_now();
         }
@@ -455,7 +455,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
         pb_thread_handle.join().unwrap();
         if short_output {
             writeln!(write_handle, "{}  {}",
-                utils::arr_to_hex_str(final_hash.as_ref()),
+                hex::encode(final_hash.as_ref()),
                 enquote::enquote('"',filename_str)).unwrap();
         }
         write_handle.flush().unwrap();
