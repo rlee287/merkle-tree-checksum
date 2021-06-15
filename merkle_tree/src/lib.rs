@@ -3,7 +3,7 @@
 mod merkle_utils;
 
 use std::io::prelude::*;
-use std::io::{BufReader, SeekFrom};
+use std::io::SeekFrom;
 use std::convert::TryInto;
 use num_iter::range_step;
 
@@ -30,11 +30,8 @@ where
     };
     let effective_block_count = exp_ceil_log(block_count, branch);
 
-    let buf_size: u32 = (block_size*(branch as u32)).clamp(16*1024, 1024*1024);
-    let mut file_buf: BufReader<F> = BufReader::with_capacity(
-        buf_size.try_into().unwrap(), file);
     let block_range = BlockRange::new(0, effective_block_count, false);
-    let hash_out = merkle_tree_file_helper::<F, D>(&mut file_buf,
+    let hash_out = merkle_tree_file_helper::<F, D>(&mut file,
         block_size, block_count, block_range, branch, &mut hash_queue).unwrap();
     drop(hash_queue);
     #[cfg(debug_assertions)]
@@ -47,7 +44,7 @@ where
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
 // Block range includes the first and excludes the last
 // Second element of tuple is seek position
-fn merkle_tree_file_helper<F, T>(file: &mut BufReader<F>,
+fn merkle_tree_file_helper<F, T>(file: &mut F,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
         hash_queue: &mut dyn Consumer<HashRange>)

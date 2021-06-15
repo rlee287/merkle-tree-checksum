@@ -10,6 +10,7 @@ mod utils;
 mod parse_functions;
 
 use std::cmp::min;
+use std::convert::TryInto;
 use std::thread;
 use std::sync::mpsc;
 
@@ -364,19 +365,19 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
         HashFunctions::crc32 =>
-            merkle_hash_file::<ProgressBarIter<File>,Crc32,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<_>,Crc32,HashConsumer>,
         HashFunctions::sha224 =>
-            merkle_hash_file::<ProgressBarIter<File>,Sha224,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<_>,Sha224,HashConsumer>,
         HashFunctions::sha256 =>
-            merkle_hash_file::<ProgressBarIter<File>,Sha256,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<_>,Sha256,HashConsumer>,
         HashFunctions::sha384 =>
-            merkle_hash_file::<ProgressBarIter<File>,Sha384,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<_>,Sha384,HashConsumer>,
         HashFunctions::sha512 =>
-            merkle_hash_file::<ProgressBarIter<File>,Sha512,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<_>,Sha512,HashConsumer>,
         HashFunctions::sha512trunc224 =>
-            merkle_hash_file::<ProgressBarIter<File>,Sha512Trunc224,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<_>,Sha512Trunc224,HashConsumer>,
         HashFunctions::sha512trunc256 =>
-            merkle_hash_file::<ProgressBarIter<File>,Sha512Trunc256,HashConsumer>,
+            merkle_hash_file::<ProgressBarIter<_>,Sha512Trunc256,HashConsumer>,
     };
     let expected_hash_len = match hash_enum {
         HashFunctions::crc32 => Crc32::output_size(),
@@ -478,7 +479,11 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
-                let pb_wrap = pb_file.wrap_read(file_obj);
+                let buf_size: usize = (block_size*(branch_factor as u32))
+                    .clamp(4*1024, 256*1024).try_into().unwrap();
+                let file_buf = BufReader::with_capacity(
+                    buf_size, file_obj);
+                let pb_wrap = pb_file.wrap_read(file_buf);
                 let result = merkle_tree_thunk(pb_wrap,
                     block_size, branch_factor, tx_wrap);
                 pb_file.finish_at_current_pos();
