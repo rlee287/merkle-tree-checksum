@@ -9,7 +9,7 @@ mod crc32_utils;
 mod utils;
 mod parse_functions;
 
-use std::cmp::min;
+use std::cmp::{min, max};
 use std::convert::TryInto;
 use std::thread;
 use std::sync::mpsc;
@@ -464,7 +464,8 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
             pb_file.set_draw_delta((block_size*branch_factor as u32) as u64);
 
             pb_hash.set_message(abbreviated_msg);
-            pb_hash.set_draw_delta(min(pb_hash_len/100, 256));
+            pb_hash.set_draw_delta(max(1,
+                min(pb_hash_len/100, (1024*1024/block_size) as u64)));
         }
 
         let pb_thread_handle = thread::Builder::new()
