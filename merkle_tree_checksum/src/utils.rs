@@ -41,6 +41,23 @@ pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     }
 }
 
+pub(crate) fn escape_chars(string: &str) -> String {
+    /*
+     * Escape \t, \r, and \n from filenames
+     * Technically we only really need to escape \n for correctness
+     * Escape the others to avoid confusion
+     * (It is the user's responsibility to avoid other weird characters)
+     */
+    string.chars().map(|c| {
+        match c {
+            '\t' => r"\t".into(),
+            '\r' => r"\r".into(),
+            '\n' => r"\n".into(),
+            l => l.to_string()
+        }
+    }).collect()
+}
+
 pub(crate) fn get_file_list(file_strs: Vec<&str>) -> Result<Vec<PathBuf>,String> {
     let mut file_list = Vec::<PathBuf>::new();
     for file_str in file_strs {

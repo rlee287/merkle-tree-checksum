@@ -21,6 +21,7 @@ use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
 use parse_functions::{ParsingErrors, extract_short_hash_parts, extract_long_hash_parts};
 use std::path::{Path,PathBuf};
+use utils::escape_chars;
 
 use digest::Digest;
 use crc32_utils::Crc32;
@@ -395,7 +396,8 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                 writeln!(file_handle, "Files:").unwrap();
                 let list_str: Vec<String> = file_list.iter()
                     .map(|path| path.to_str().unwrap())
-                    .map(|string| enquote::enquote('"', string))
+                    .map(|string| escape_chars(string))
+                    .map(|string| enquote::enquote('"', &string))
                     .collect();
                 writeln!(file_handle, "{}", list_str.join(",\n")).unwrap();
             }
@@ -550,9 +552,10 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
             match cmd_chosen {
                 HashCommand::GenerateHash => {
                     if let FileHandleWrapper::Writer(w) = &mut hash_file_handle {
+                        let escaped_filename = escape_chars(filename_str);
                         writeln!(w, "{}  {}",
                             hex::encode(final_hash.as_ref()),
-                            enquote::enquote('"',filename_str)).unwrap();
+                            enquote::enquote('"', &escaped_filename)).unwrap();
                         w.flush().unwrap();
                     } else {
                         unreachable!()
