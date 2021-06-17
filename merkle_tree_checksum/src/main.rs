@@ -42,6 +42,14 @@ enum HashCommand {
     VerifyHash
 }
 
+#[derive(PartialEq, Eq, Debug, Clone)]
+enum VerificationError {
+    MismatchedHash(Box<[u8]>,Box<[u8]>), // Stored, Computed
+    MalformedEntry(String), // String is the malformed line
+    OutOfOrderEntry // TODO: remove this later
+}
+//impl Error for VerificationError {}
+
 enum FileHandleWrapper<W, R>
 where
     W: Write+Send,
@@ -492,13 +500,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
             })
             .unwrap();
 
-        let cleanup_pb_closure = || {
-            pb_hash.finish_at_current_pos();
-            pb_thread_handle.join().unwrap();
-            if !is_quiet {
-                assert_eq!(pb_hash.position(), pb_hash.length());
-            }
-        };
+        let mut abort_hash_loop: Result<(), VerificationError> = Ok(());
         // TODO: handle arbitarily out-of-order entries
         for block_hash in rx.into_iter() {
             pb_hash.inc(1);
@@ -525,16 +527,25 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                                 &line, 2*expected_hash_len);
                             if let Some((file_id, file_hash_range)) = hash_parts {
                                 if file_id != file_index {
-                                    // TODO
-                                    eprintln!("Error: hash file has unsupported out-of-order entry");
-                                    cleanup_pb_closure();
-                                    return 2;
+                                    abort_hash_loop = Err(VerificationError::OutOfOrderEntry);
+                                    break;
                                 }
-                                todo!();
+                                match (block_hash.block_range==file_hash_range.block_range,
+                                        block_hash.byte_range==file_hash_range.byte_range,
+                                        block_hash.hash_result==file_hash_range.hash_result) {
+                                    (true, true, true) => {/*All good, do nothing*/},
+                                    (true, true, false) => {
+                                        abort_hash_loop = Err(VerificationError::MismatchedHash(file_hash_range.hash_result,block_hash.hash_result));
+                                        break;
+                                    }
+                                    (_, _, _) => {
+                                        abort_hash_loop = Err(VerificationError::OutOfOrderEntry);
+                                        break;
+                                    }
+                                }
                             } else {
-                                eprintln!("Error: hash file has malformed entry {}", line);
-                                cleanup_pb_closure();
-                                return 2;
+                                abort_hash_loop = Err(VerificationError::MalformedEntry(line));
+                                break;
                             }
                         } else {
                             unreachable!()
@@ -544,7 +555,13 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
             }
             thread::yield_now();
         }
-        cleanup_pb_closure();
+        pb_hash.finish_at_current_pos();
+        pb_thread_handle.join().unwrap();
+
+        if !is_quiet && abort_hash_loop.is_ok() {
+            assert_eq!(pb_hash.position(), pb_hash.length());
+        }
+
         let final_hash = thread_handle.join().unwrap();
         if short_output {
             match cmd_chosen {
@@ -571,27 +588,45 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                                 enquote::unquote(&quoted_name).unwrap());
                             // Use quoted version for ease of parsing
                             if final_hash == file_hash_box {
-                                eprintln!("Info: {} hash matches", quoted_name);
+                                abort_hash_loop = Ok(());
                             } else {
-                                eprint!("Error: {} has hash mismatch:\n  stored: {}\n  computed: {}\n",
-                                    quoted_name,
-                                    Vec::<u8>::encode_hex::<String>(&file_hash_box.into_vec()),
-                                    Vec::<u8>::encode_hex::<String>(&final_hash.into_vec()));
-                                if cmd_matches.is_present("failfast") {
-                                    continue;
-                                } else {
-                                    return 2;
-                                }
+                                abort_hash_loop = Err(VerificationError::MismatchedHash(file_hash_box, final_hash));
                             }
                         } else {
-                            eprintln!("Error: hash file has malformed entry {}", line);
-                            return 2;
+                            abort_hash_loop = Err(VerificationError::MalformedEntry(line));
                         }
                     } else {
                         unreachable!()
                     }
                 }
             }
+            debug_assert!(!matches!(abort_hash_loop, Err(VerificationError::OutOfOrderEntry)));
+        }
+        match abort_hash_loop {
+            Ok(_) => {
+                if cmd_chosen == HashCommand::VerifyHash {
+                    eprintln!("Info: {} hash matches", filename_str);
+                }
+            },
+            Err(VerificationError::MismatchedHash(stored,computed)) => {
+                eprint!("Error: {} has hash mismatch:\n  stored: {}\n  computed: {}\n", filename_str,
+                    Vec::<u8>::encode_hex::<String>(&stored.into_vec()),
+                    Vec::<u8>::encode_hex::<String>(&computed.into_vec()));
+                if cmd_matches.is_present("failfast") {
+                    return 2;
+                } else {
+                    continue;
+                }
+            },
+            Err(VerificationError::MalformedEntry(line)) => {
+                eprintln!("Error: hash file has malformed entry {}", line);
+                return 2;
+            }
+            Err(VerificationError::OutOfOrderEntry) => {
+                eprintln!("Error: hash file has unsupported out-of-order entry");
+                return 2;
+            }
+
         }
     }
     return 0;
