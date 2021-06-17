@@ -4,6 +4,7 @@ use std::io::{self, BufRead};
 use semver::{Version, VersionReq};
 
 use std::sync::Arc;
+use lazy_static::lazy_static;
 use cached::cached;
 
 use std::str::FromStr;
@@ -22,13 +23,21 @@ pub(crate) enum ParsingErrors {
     BadVersion(Version),
 }
 
-pub(crate) fn first_two_quotes(s: &str) -> (Option<usize>, Option<usize>) {
-    let mut result_tuple: (Option<usize>, Option<usize>) = (None, None);
-    result_tuple.0 = s.find('"');
-    if let Some(i) = result_tuple.0 {
-        result_tuple.1 = s[i+1..].find('"').map(|val| val+i+1)
-    }
-    result_tuple
+lazy_static! {
+    static ref QUOTED_FILENAME_REGEX: Regex =
+        Regex::new(concat!("^",
+            "((?:[[:xdigit:]][[:xdigit:]])+  )?",
+            "(\"(?:[^\"]|\\\\\")+\")",
+            ",?",
+            "(?:\\n|\\r\\n)?",
+            "$")).unwrap();
+}
+
+// (bool, String) is (is_short, quoted_filename)
+pub(crate) fn extract_quoted_filename(line: &str) -> Option<(bool, String)> {
+    let line_portions = QUOTED_FILENAME_REGEX.captures(line)?;
+    debug_assert!(line_portions.len() == 3);
+    Some((line_portions.get(1).is_some(), line_portions[2].to_string()))
 }
 
 // Contents of working_str is the line after comments

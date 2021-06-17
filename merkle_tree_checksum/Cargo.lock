@@ -231,6 +231,7 @@ dependencies = [
  "generic-array",
  "hex",
  "indicatif",
+ "lazy_static",
  "merkle_tree",
  "regex",
  "semver",

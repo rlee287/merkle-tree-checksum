@@ -238,46 +238,25 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                 ),
                 false => None
             };
-            // TODO: use regex to pull out file names?
-            let mut build_filename_str = String::default();
-            // TODO: refactor
             loop {
-                let (start_quote, end_quote)
-                        = parse_functions::first_two_quotes(build_filename_str.as_str());
-                if let Some(i) = end_quote {
-                    let quote_slice = &build_filename_str[start_quote.unwrap()..=i];
-                    let unquoted_res = enquote::unquote(quote_slice);
-                    let unquoted = match unquoted_res {
+                let next_line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
+                if let Some((short_from_regex, quoted_name)) = parse_functions::extract_quoted_filename(&next_line) {
+                    assert_eq!(short_from_regex, is_short_hash);
+                    let unquoted_name = match enquote::unquote(&quoted_name) {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("Error: unable to unquote file name {}: {}",
-                                quote_slice, e);
+                                quoted_name, e);
                             return 1;
                         }
                     };
-                    file_vec.push(PathBuf::from(unquoted));
-                    build_filename_str = build_filename_str[i+1..].to_owned();
-                } else if let Some(_) = start_quote {
-                    // read_line does append
-                    if hash_file_reader.read_line(&mut build_filename_str)
-                            .is_err() {
-                        eprintln!("Error: unterminated quote at EOF");
-                    }
+                    file_vec.push(PathBuf::from(unquoted_name));
+                } else if next_line == "Hashes:\n" {
+                    break;
                 } else {
-                    // TODO: rather fragile
-                    if !is_short_hash && build_filename_str.trim() == "Hashes:" {
-                        break;
-                    }
-                    if build_filename_str.len() >= 256 {
-                        // Bail out to avoid reading rest of file into memory
-                        eprintln!("Error: hash file is malformed: errors extracting file list");
-                        return 1;
-                    }
-                    let next_line = match parse_functions::next_noncomment_line(&mut hash_file_reader) {
-                        Ok(s) => s,
-                        Err(_) => break
-                    };
-                    build_filename_str += next_line.as_str();
+                    eprintln!("Error: encountered malformed file entry {}",
+                        next_line);
+                    return 1;
                 }
             }
             assert!(is_short_hash == list_begin_pos.is_some());

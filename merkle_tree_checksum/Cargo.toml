@@ -16,6 +16,7 @@ indicatif = "0.16.0"
 enquote = "1.0.3"
 semver = "1.0.0"
 hex = "0.4.3"
+lazy_static = "1.4.0"
 
 #crc32-digest uses an outdated version of the Digest trait
 digest = "0.9"
