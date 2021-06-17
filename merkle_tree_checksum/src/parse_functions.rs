@@ -3,6 +3,7 @@
 use std::io::{self, BufRead};
 use semver::{Version, VersionReq};
 
+use std::sync::Arc;
 use cached::cached;
 
 use std::str::FromStr;
@@ -151,13 +152,13 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
 // Using cache instead of once-cell for future flexibility
 cached!{
     SHORT_REGEX_CACHE;
-    fn short_hash_regex(hex_digit_count: usize) -> Regex = {
+    fn short_hash_regex(hex_digit_count: usize) -> Arc<Regex> = {
         // hex_digits{count}  "(anything except quote | escaped quote)+" optional_newline
         let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
         let quoted_name_regex = "(\"(?:[^\"]|\\\\\")+\")";
         let regex_str = format!("^{}  {}(?:\\n|\\r\\n)?$",
             hash_regex, quoted_name_regex);
-        Regex::new(&regex_str).unwrap()
+        Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
 pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Option<(Box<[u8]>, String)> {
@@ -171,14 +172,14 @@ pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Op
 
 cached!{
     LONG_REGEX_CACHE;
-    fn long_hash_regex(hex_digit_count: usize) -> Regex = {
+    fn long_hash_regex(hex_digit_count: usize) -> Arc<Regex> = {
         let file_id_regex = " *([[:digit:]]+)";
         let blockrange_regex = "\\[0x([[:xdigit:]]+)-0x([[:xdigit:]]+)(\\]|\\))";
         let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
         // rfile_id hexrange hexrange hex_digits{count} optional_newline
         let regex_str = format!("^{0} {1} {1} {2}(?:\\n|\\r\\n)?$",
             file_id_regex, blockrange_regex, hash_regex);
-        Regex::new(&regex_str).unwrap()
+        Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
 pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Option<(usize, HashRange)> {
