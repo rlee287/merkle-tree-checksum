@@ -45,6 +45,8 @@ pub const fn node_count(file_size: u64, block_size: u32, branch: u16) -> Option<
     }
 }
 
+// Avoid spurious warning when compiling in release mode
+#[allow(dead_code)]
 pub(crate) fn current_seek_pos(seekable: &mut dyn Seek) -> u64 {
     seekable.seek(SeekFrom::Current(0)).unwrap()
 }
