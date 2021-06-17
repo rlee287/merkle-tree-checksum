@@ -75,7 +75,7 @@ pub(crate) fn check_version_line(version_line: &str)
         let version_str = &version_str_token[1..];
         // TODO: adjust allowable ranges as things get developed more
         let range_str = concat!("^",crate_version!());
-        let recognized_range = VersionReq::parse(range_str.as_ref()).unwrap();
+        let recognized_range = VersionReq::parse(range_str).unwrap();
         let file_version = match Version::parse(version_str) {
             Ok(v) => v,
             Err(_e) => {

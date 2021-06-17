@@ -190,8 +190,9 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
             // Read in the next three lines
             let mut hash_param_arr = [String::default(), String::default(), String::default()];
             for i in 0..3 {
+                // TODO: this may need adjusting for newline handling
                 let line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
-                assert!(line.chars().last().unwrap() == '\n');
+                assert!(line.ends_with('\n'));
                 // Slice to remove newline
                 hash_param_arr[i] = line[..line.len()-1].to_string();
             }
@@ -200,7 +201,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                 hash_function_result,
                 other_errors)
                 = parse_functions::get_hash_params(&hash_param_arr);
-            if other_errors.len() > 0 {
+            if !other_errors.is_empty() {
                 let mut error_vec_string: Vec<String> = Vec::new();
                 let mut error_string = String::default();
                 for error in other_errors {
@@ -260,8 +261,8 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                 }
             }
             assert!(is_short_hash == list_begin_pos.is_some());
-            if list_begin_pos.is_some() {
-                hash_file_reader.seek(SeekFrom::Start(list_begin_pos.unwrap())).unwrap();
+            if let Some(seek_pos) = list_begin_pos {
+                hash_file_reader.seek(SeekFrom::Start(seek_pos)).unwrap();
             }
 
             (
