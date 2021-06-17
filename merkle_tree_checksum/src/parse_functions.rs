@@ -74,7 +74,7 @@ pub(crate) fn check_version_line(version_line: &str)
         }
         let version_str = &version_str_token[1..];
         // TODO: adjust allowable ranges as things get developed more
-        let range_str = ["^", crate_version!()].join("");
+        let range_str = concat!("^",crate_version!());
         let recognized_range = VersionReq::parse(range_str.as_ref()).unwrap();
         let file_version = match Version::parse(version_str) {
             Ok(v) => v,
@@ -170,13 +170,13 @@ cached!{
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
-pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Option<(Box<[u8]>, String)> {
+pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Option<(Box<[u8]>, &str)> {
     let parsing_regex = short_hash_regex(hex_digit_count);
     let portions = parsing_regex.captures(line)?;
     debug_assert!(portions.len() == 3);
     let hash_hex_vec = Vec::<u8>::from_hex(&portions[1]).ok()?;
-    let quoted_name = &portions[2];
-    Some((hash_hex_vec.into_boxed_slice(), quoted_name.to_string()))
+    let quoted_name = portions.get(2).unwrap();
+    Some((hash_hex_vec.into_boxed_slice(), &line[quoted_name.range()]))
 }
 
 cached!{
