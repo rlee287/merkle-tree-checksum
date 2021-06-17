@@ -66,7 +66,7 @@ pub(crate) fn get_file_list(file_strs: Vec<&str>) -> Result<Vec<PathBuf>,String>
             file_list.push(file_path.to_path_buf());
         } else if file_path.is_dir() {
             // Walk directory to find all the files in it
-            for entry in WalkDir::new(file_path).min_depth(1) {
+            for entry in WalkDir::new(file_path).min_depth(1).follow_links(true) {
                 let entry_unwrap = entry.unwrap();
                 let entry_path = entry_unwrap.path();
                 if entry_path.is_file() {
