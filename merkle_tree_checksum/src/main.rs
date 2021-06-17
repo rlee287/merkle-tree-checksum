@@ -16,7 +16,7 @@ use std::sync::mpsc;
 
 use chrono::Local;
 
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
 use parse_functions::{ParsingErrors, extract_short_hash_parts, extract_long_hash_parts};
@@ -338,35 +338,6 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
     }
     let file_list = file_list_result.unwrap();
 
-    // Write file prelude
-    if cmd_chosen == HashCommand::GenerateHash {
-        let write_file_name = cmd_matches.value_of("output").unwrap();
-        let mut write_handle = match File::create(write_file_name) {
-            Ok(file) => file,
-            Err(err) => {
-                eprintln!("Error opening file {} for writing: {}",
-                    write_file_name, err);
-                return 1
-            }
-        };
-        writeln!(write_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
-        writeln!(write_handle, "# Started {}", Local::now().to_rfc2822()).unwrap();
-        writeln!(write_handle, "Hash function: {}", hash_enum).unwrap();
-        writeln!(write_handle, "Block size: {}", block_size).unwrap();
-        writeln!(write_handle, "Branching factor: {}", branch_factor).unwrap();
-
-        if !short_output {
-            writeln!(write_handle, "Files:").unwrap();
-            let list_str: Vec<String> = file_list.iter()
-                .map(|path| path.to_str().unwrap())
-                .map(|string| enquote::enquote('"', string))
-                .collect();
-            writeln!(write_handle, "{}", list_str.join(",\n")).unwrap();
-        }
-        writeln!(write_handle, "Hashes:").unwrap();
-        write_handle.flush().unwrap();
-    }
-
     let is_quiet = matches.is_present("quiet");
 
     type HashConsumer = MpscConsumer<merkle_tree::HashRange>;
@@ -405,10 +376,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
     let mut hash_file_handle: FileHandleWrapper<_,_> = match cmd_chosen {
         HashCommand::GenerateHash => {
             let write_file_name = cmd_matches.value_of("output").unwrap();
-            let mut file_open_opts = OpenOptions::new();
-            file_open_opts.write(true).truncate(false);
-
-            let mut file_handle = match file_open_opts.open(write_file_name) {
+            let mut file_handle = match File::create(write_file_name) {
                 Ok(file) => file,
                 Err(err) => {
                     eprintln!("Error opening file {} for writing: {}",
@@ -416,10 +384,25 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                     return 1
                 }
             };
+            // Write file prelude
+            writeln!(file_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
+            writeln!(file_handle, "# Started {}", Local::now().to_rfc2822()).unwrap();
+            writeln!(file_handle, "Hash function: {}", hash_enum).unwrap();
+            writeln!(file_handle, "Block size: {}", block_size).unwrap();
+            writeln!(file_handle, "Branching factor: {}", branch_factor).unwrap();
+
+            if !short_output {
+                writeln!(file_handle, "Files:").unwrap();
+                let list_str: Vec<String> = file_list.iter()
+                    .map(|path| path.to_str().unwrap())
+                    .map(|string| enquote::enquote('"', string))
+                    .collect();
+                writeln!(file_handle, "{}", list_str.join(",\n")).unwrap();
+            }
+            writeln!(file_handle, "Hashes:").unwrap();
+            file_handle.flush().unwrap();
+
             debug_assert!(verify_start_pos.is_none());
-            // Seek past the header we wrote earlier
-            // TODO: move the header writing here instead?
-            file_handle.seek(SeekFrom::End(0)).unwrap();
             FileHandleWrapper::Writer(Box::new(BufWriter::new(file_handle)))
         },
         HashCommand::VerifyHash => {
