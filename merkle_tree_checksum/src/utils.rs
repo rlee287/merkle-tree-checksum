@@ -23,8 +23,7 @@ arg_enum!{
 
 pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     let name_chars = name.chars().collect::<Vec<_>>();
-    if name.len() <= len_threshold {
-        // TODO: is copy avoidable?
+    if name_chars.len() <= len_threshold {
         return name.to_owned();
     } else if len_threshold < 3 {
         // Return the first len_threshold chars (*not* bytes)
@@ -35,9 +34,12 @@ pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
         // Use subtraction to ensure consistent sum
         let end_half_len = filechar_count / 2;
         let begin_half_len = filechar_count - end_half_len;
-        return [&name[..begin_half_len],
-                "~",
-                &name[name.len()-end_half_len..]].join("");
+
+        let ret_str =
+            (&name_chars[..begin_half_len]).iter().collect::<String>()
+            + "~"
+            + &name_chars[name.len()-end_half_len..].iter().collect::<String>();
+        return ret_str;
     }
 }
 
