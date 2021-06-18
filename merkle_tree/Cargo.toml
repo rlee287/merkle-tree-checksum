@@ -11,7 +11,6 @@ publish = false
 digest = "0.9"
 generic-array = "0.14.4"
 num-iter = "0.1.42"
-range_union_find = "0.3.0"
 lazy_static = "1.4.0"
 
 [dependencies.regex]

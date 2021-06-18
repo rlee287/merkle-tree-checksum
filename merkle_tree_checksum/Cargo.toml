@@ -23,6 +23,7 @@ digest = "0.9"
 generic-array = "0.14.4"
 crc32fast = "1.2.1"
 sha2 = "0.9.2"
+# ~ to be extra careful with backwards-compatibility
 merkle_tree = { version = "~0.2.0", path = "../merkle_tree"}
 
 [dependencies.cached]
@@ -32,10 +33,10 @@ default-features = false
 [dependencies.clap]
 version = "~2.33.3" # ~ specification from crates.io
 default-features = false
-features = [ "wrap_help", "color" ]
+features = [ "wrap_help", "color", "suggestions" ]
 
 # Pull in perf feature to speed up matching
-# Currently transitive dependency of indicatif, but may help with parsing later
+# Both transitive dependency of indicatif and used to parse hash records
 [dependencies.regex]
 version = "1.5.4"
 default-features = false
