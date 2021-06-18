@@ -22,6 +22,8 @@ where
     D: Digest,
     C: Consumer<HashRange>
 {
+    assert!(block_size != 0);
+    assert!(branch >= 2);
     file.seek(SeekFrom::Start(0)).unwrap();
     let file_len = seek_len(&mut file);
     let block_count = match ceil_div(file_len, block_size.into()) {
