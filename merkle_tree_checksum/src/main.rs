@@ -61,11 +61,11 @@ where
 }
 
 fn main() {
-    let status_code = run(&mut std::env::args_os());
+    let status_code = run();
     std::process::exit(status_code);
 }
 
-pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
+fn run() -> i32 {
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
@@ -123,7 +123,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
 
-    let matches = clap_app.get_matches_from(argv);
+    let matches = clap_app.get_matches();
 
     let (cmd_chosen, cmd_matches): (HashCommand, ArgMatches)
             = match matches.subcommand() {
