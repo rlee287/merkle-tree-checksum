@@ -45,13 +45,8 @@ pub const fn node_count(file_size: u64, block_size: u32, branch: u16) -> Option<
     }
 }
 
-// Avoid spurious warning when compiling in release mode
-#[allow(dead_code)]
-pub(crate) fn current_seek_pos(seekable: &mut dyn Seek) -> u64 {
-    seekable.seek(SeekFrom::Current(0)).unwrap()
-}
 pub fn seek_len(seekable: &mut dyn Seek) -> u64 {
-    let old_pos = seekable.seek(SeekFrom::Current(0)).unwrap();
+    let old_pos = seekable.stream_position().unwrap();
     let len = seekable.seek(SeekFrom::End(0)).unwrap();
     seekable.seek(SeekFrom::Start(old_pos)).unwrap();
     // return

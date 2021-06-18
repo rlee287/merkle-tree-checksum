@@ -235,7 +235,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
             };
             let list_begin_pos: Option<u64> = match is_short_hash {
                 true => Some(
-                    hash_file_reader.seek(SeekFrom::Current(0)).unwrap()
+                    hash_file_reader.stream_position().unwrap()
                 ),
                 false => None
             };
@@ -308,7 +308,7 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
                     }
                 },
                 // We want to ensure that the seek call succeeded
-                Some(hash_file_reader.seek(SeekFrom::Current(0)).unwrap())
+                Some(hash_file_reader.stream_position().unwrap())
             )
         }
     };
@@ -548,8 +548,6 @@ pub(crate) fn run(argv: &mut dyn Iterator<Item = std::ffi::OsString>) -> i32 {
 
                         let hash_parts = extract_short_hash_parts(&line, 2*expected_hash_len);
                         if let Some((file_hash_box, quoted_name)) = hash_parts {
-                            // Error: assert breaks with newlines
-                            // TODO: newline escaping earlier
                             assert_eq!(filename_str,
                                 enquote::unquote(&quoted_name).unwrap());
                             // Use quoted version for ease of parsing

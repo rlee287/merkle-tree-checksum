@@ -57,8 +57,6 @@ where
 {
     type HashResult<T> = GenericArray<u8, <T as Digest>::OutputSize>;
     assert!(block_range.start < block_range.end);
-    // Guaranteed by type specification
-    //assert!(hash_out.len() == <T as Digest>::output_size());
 
     if block_range.start < block_count {
         let block_interval = block_range.range();
@@ -68,12 +66,12 @@ where
                 let block_size_as_usize: usize = block_size.try_into().unwrap();
                 let mut file_vec: Vec::<u8> = Vec::with_capacity(block_size_as_usize+1);
 
-                // First resize to block-size to read in a full block...
+                // First resize to block_size to read in a full block...
                 file_vec.resize(block_size_as_usize, 0);
                 // Should be optimized out in release mode
                 #[cfg(debug_assertions)]
                 {
-                    let current_pos_actual = current_seek_pos(file);
+                    let current_pos_actual = file.stream_position().unwrap();
                     debug_assert!(current_pos_actual == current_pos);
                 }
                 let bytes_read = file.read(file_vec.as_mut_slice()).unwrap();
@@ -125,7 +123,7 @@ where
         let end_byte_file = current_pos.saturating_sub(1);
         #[cfg(debug_assertions)]
         {
-            let end_byte_file_actual = current_seek_pos(file).saturating_sub(1);
+            let end_byte_file_actual = file.stream_position().unwrap().saturating_sub(1);
             debug_assert_eq!(end_byte_file_actual, end_byte_file);
         }
         let block_range = BlockRange::new(start_block, end_block, true);

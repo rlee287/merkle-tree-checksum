@@ -91,7 +91,7 @@ enum SenderTypes<T> {
     BoundedSend(mpsc::SyncSender<T>)
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MpscConsumer<T> {
     sender: SenderTypes<T>
 }
