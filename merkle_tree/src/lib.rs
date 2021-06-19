@@ -107,15 +107,16 @@ where
                         break;
                     }
                 }
+                let hash_vector_len = hash_vector.len();
                 let mut combined_input = Vec::with_capacity(
-                    <T as Digest>::output_size()*(branch as usize)+1);
+                    <T as Digest>::output_size()*hash_vector_len+1);
                 // Prepend 0x01
                 combined_input.insert(0, 0x01);
                 for hash in hash_vector {
                     combined_input.extend(hash);
                 }
                 debug_assert_eq!(combined_input.len(),
-                    <T as Digest>::output_size()*(branch as usize)+1);
+                    <T as Digest>::output_size()*hash_vector_len+1);
                 combined_input
             }
         };
