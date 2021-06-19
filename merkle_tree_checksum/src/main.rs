@@ -9,7 +9,6 @@ mod crc32_utils;
 mod utils;
 mod parse_functions;
 
-use std::cmp::{min, max};
 use std::convert::TryInto;
 use std::thread;
 use std::sync::mpsc;
@@ -31,7 +30,7 @@ use utils::HashFunctions;
 use utils::MpscConsumer;
 
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
-use indicatif::{ProgressBar, ProgressStyle, ProgressBarIter,
+use indicatif::{ProgressBar, ProgressStyle,
     ProgressDrawTarget, MultiProgress};
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
@@ -332,23 +331,22 @@ fn run() -> i32 {
 
     let is_quiet = matches.is_present("quiet");
 
-    type HashConsumer = MpscConsumer<merkle_tree::HashRange>;
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
         HashFunctions::crc32 =>
-            merkle_hash_file::<ProgressBarIter<_>,Crc32,HashConsumer>,
+            merkle_hash_file::<_,Crc32,_>,
         HashFunctions::sha224 =>
-            merkle_hash_file::<ProgressBarIter<_>,Sha224,HashConsumer>,
+            merkle_hash_file::<_,Sha224,_>,
         HashFunctions::sha256 =>
-            merkle_hash_file::<ProgressBarIter<_>,Sha256,HashConsumer>,
+            merkle_hash_file::<_,Sha256,_>,
         HashFunctions::sha384 =>
-            merkle_hash_file::<ProgressBarIter<_>,Sha384,HashConsumer>,
+            merkle_hash_file::<_,Sha384,_>,
         HashFunctions::sha512 =>
-            merkle_hash_file::<ProgressBarIter<_>,Sha512,HashConsumer>,
+            merkle_hash_file::<_,Sha512,_>,
         HashFunctions::sha512trunc224 =>
-            merkle_hash_file::<ProgressBarIter<_>,Sha512Trunc224,HashConsumer>,
+            merkle_hash_file::<_,Sha512Trunc224,_>,
         HashFunctions::sha512trunc256 =>
-            merkle_hash_file::<ProgressBarIter<_>,Sha512Trunc256,HashConsumer>,
+            merkle_hash_file::<_,Sha512Trunc256,_>,
     };
     let expected_hash_len = match hash_enum {
         HashFunctions::crc32 => Crc32::output_size(),
@@ -460,7 +458,7 @@ fn run() -> i32 {
             .unwrap();
 
         let (tx, rx) = mpsc::channel::<merkle_tree::HashRange>();
-        let tx_wrap = utils::MpscConsumer::new_async(tx);
+        let tx_wrap = MpscConsumer::new_async(tx);
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
