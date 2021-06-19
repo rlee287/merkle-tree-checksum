@@ -537,11 +537,12 @@ fn run() -> i32 {
         pb_hash.finish_at_current_pos();
         pb_thread_handle.join().unwrap();
 
+        let final_hash = thread_handle.join().unwrap();
+
         if !is_quiet && abort_hash_loop.is_ok() {
             assert_eq!(pb_hash.position(), pb_hash.length());
         }
 
-        let final_hash = thread_handle.join().unwrap();
         if short_output {
             match cmd_chosen {
                 HashCommand::GenerateHash => {

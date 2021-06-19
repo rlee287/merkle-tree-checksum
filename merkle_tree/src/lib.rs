@@ -13,7 +13,6 @@ use generic_array::GenericArray;
 use merkle_utils::*;
 pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
 
-// Hash Generation
 pub fn merkle_hash_file<F, D, C>(mut file: F, block_size: u32, branch: u16,
         mut hash_queue: C)
          -> Box<[u8]>

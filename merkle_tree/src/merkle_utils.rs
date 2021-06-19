@@ -67,7 +67,7 @@ pub struct BlockRange {
 }
 impl BlockRange {
     pub fn new(start: u64, end: u64, include_end: bool) -> BlockRange {
-        BlockRange {start: start, end: end, include_end: include_end}
+        BlockRange {start, end, include_end}
     }
     pub fn range(&self) -> u64 {
         let init_range = match self.start <= self.end {
