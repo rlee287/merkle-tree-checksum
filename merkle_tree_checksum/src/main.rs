@@ -446,11 +446,10 @@ fn run() -> i32 {
             assert!(abbreviated_msg.len() <= 24);
 
             pb_file.set_message(abbreviated_msg.clone());
-            pb_file.set_draw_delta((block_size*branch_factor as u32) as u64);
+            pb_file.set_draw_rate(4);
 
             pb_hash.set_message(abbreviated_msg);
-            pb_hash.set_draw_delta(max(1,
-                min(pb_hash_len/100, (1024*1024/block_size) as u64)));
+            pb_hash.set_draw_rate(4);
         }
 
         let pb_thread_handle = thread::Builder::new()
