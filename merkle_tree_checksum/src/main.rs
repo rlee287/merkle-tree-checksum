@@ -412,6 +412,7 @@ fn run() -> i32 {
             FileHandleWrapper::Reader(Box::new(BufReader::new(hash_file)))
         }
     };
+    let mut hashing_final_status = 0;
     for (file_index, file_name) in file_list.iter().enumerate() {
         let filename_str = file_name.to_str().unwrap();
         let file_obj = match File::open(file_name.to_owned()) {
@@ -592,6 +593,7 @@ fn run() -> i32 {
                 if cmd_matches.is_present("failfast") {
                     return 2;
                 } else {
+                    hashing_final_status = 2;
                     continue;
                 }
             },
@@ -606,5 +608,5 @@ fn run() -> i32 {
 
         }
     }
-    return 0;
+    return hashing_final_status;
 }
