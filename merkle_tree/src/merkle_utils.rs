@@ -61,9 +61,9 @@ lazy_static! {
 }
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct BlockRange {
-    pub start: u64,
-    pub end: u64,
-    pub include_end: bool
+    start: u64,
+    end: u64,
+    include_end: bool
 }
 impl BlockRange {
     pub fn new(start: u64, end: u64, include_end: bool) -> BlockRange {
@@ -78,6 +78,15 @@ impl BlockRange {
             true => init_range + 1,
             false => init_range
         }
+    }
+    pub fn start(&self) -> u64 {
+        self.start
+    }
+    pub fn end(&self) -> u64 {
+        self.end
+    }
+    pub fn include_end(&self) -> bool {
+        self.include_end
     }
 }
 

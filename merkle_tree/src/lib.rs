@@ -33,13 +33,9 @@ where
     let effective_block_count = exp_ceil_log(block_count, branch);
 
     let block_range = BlockRange::new(0, effective_block_count, false);
-    let hash_out = merkle_tree_file_helper::<F, D>(&mut file,
+    let hash_out = merkle_tree_file_helper::<_, D>(&mut file,
         block_size, block_count, block_range, branch, &mut hash_queue).unwrap();
-    drop(hash_queue);
-    #[cfg(debug_assertions)]
-    {
-        assert_eq!(file_len, hash_out.1);
-    }
+    debug_assert_eq!(file_len, hash_out.1);
     return hash_out.0.to_vec().into_boxed_slice();
 }
 
@@ -56,35 +52,39 @@ where
     T: Digest
 {
     type HashResult<T> = GenericArray<u8, <T as Digest>::OutputSize>;
-    assert!(block_range.start < block_range.end);
+    if block_range.include_end() {
+        assert!(block_range.start() <= block_range.end());
+    } else {
+        assert!(block_range.start() < block_range.end());
+    }
 
-    if block_range.start < block_count {
+    if block_range.start() < block_count {
         let block_interval = block_range.range();
-        let mut current_pos = block_range.start*(block_size as u64);
+        let mut current_pos = block_range.start()*(block_size as u64);
         let hash_input = match block_interval {
             1 => {
                 let block_size_as_usize: usize = block_size.try_into().unwrap();
                 let mut file_vec: Vec::<u8> = Vec::with_capacity(block_size_as_usize+1);
 
                 // First resize to block_size to read in a full block...
-                file_vec.resize(block_size_as_usize, 0);
+                file_vec.resize(block_size_as_usize+1, 0);
+                // Prepend 0x00 before reading in file contents
+                file_vec[0] = 0x00;
                 // Should be optimized out in release mode
                 #[cfg(debug_assertions)]
                 {
                     let current_pos_actual = file.stream_position().unwrap();
                     debug_assert!(current_pos_actual == current_pos);
                 }
-                let bytes_read = file.read(file_vec.as_mut_slice()).unwrap();
+                let bytes_read = file.read(&mut file_vec[1..]).unwrap();
                 // ...then shrink the vector to the number of bytes read, if needed
                 if bytes_read < block_size.try_into().unwrap() {
                     // Default is irrelevant as we're shrinking
-                    file_vec.resize(bytes_read, 0);
+                    file_vec.resize(bytes_read+1, 0);
                     // Ensure that reading less than requested only occurs when EOF
-                    debug_assert!(block_range.start == block_count-1);
+                    debug_assert!(block_range.start() == block_count-1);
                 }
                 current_pos += bytes_read as u64;
-                // Prepend 0x00
-                file_vec.insert(0, 0x00);
                 file_vec
             }
             _ => {
@@ -94,8 +94,8 @@ where
                 let mut hash_vector: Vec::<HashResult<T>> = Vec::with_capacity(branch.into());
                 // Compute the hash for each branch
                 for slice_start in range_step(
-                        block_range.start,
-                        block_range.start+block_increment*branch as u64,
+                        block_range.start(),
+                        block_range.start()+block_increment*branch as u64,
                         block_increment) {
                     let slice_end = slice_start+block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end, false);
@@ -117,9 +117,12 @@ where
         let hash_result = T::digest(hash_input.as_slice());
         // Byte range start is theoretical from tree structure
         // Byte range end may differ due to EOF
-        let start_block = block_range.start;
-        let start_byte = block_range.start*block_size as u64;
-        let end_block = block_range.end-1;
+        let start_block = block_range.start();
+        let start_byte = block_range.start()*block_size as u64;
+        let end_block = block_range.end()-match block_range.include_end() {
+            true => 0,
+            false => 1
+        };
         let end_byte_file = current_pos.saturating_sub(1);
         #[cfg(debug_assertions)]
         {
