@@ -149,17 +149,26 @@ impl FromStr for BlockRange {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HashRange {
-    pub block_range: BlockRange,
-    pub byte_range: BlockRange,
-    pub hash_result: Box<[u8]>
+    block_range: BlockRange,
+    byte_range: BlockRange,
+    hash_result: Box<[u8]>
 }
 impl HashRange {
     pub fn new(block_range: BlockRange,
             byte_range: BlockRange,
             hash_result: Box<[u8]>) -> HashRange {
-        HashRange {block_range: block_range,
-                byte_range: byte_range,
-                hash_result: hash_result}
+        HashRange {block_range,
+                byte_range,
+                hash_result}
+    }
+    pub fn block_range(&self) -> BlockRange {
+        self.block_range
+    }
+    pub fn byte_range(&self) -> BlockRange {
+        self.byte_range
+    }
+    pub fn hash_result(&self) -> &[u8] {
+        self.hash_result.as_ref()
     }
 }
 

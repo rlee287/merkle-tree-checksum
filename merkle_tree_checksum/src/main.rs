@@ -487,9 +487,9 @@ fn run() -> i32 {
                             // {file_index} [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
                             writeln!(w, "{:3} {} {} {}",
                                 file_index,
-                                block_hash.block_range,
-                                block_hash.byte_range,
-                                hex::encode(&block_hash.hash_result)).unwrap();
+                                block_hash.block_range(),
+                                block_hash.byte_range(),
+                                hex::encode(&block_hash.hash_result())).unwrap();
                         } else {
                             unreachable!()
                         }
@@ -506,12 +506,14 @@ fn run() -> i32 {
                                     abort_hash_loop = Err(VerificationError::OutOfOrderEntry);
                                     break;
                                 }
-                                match (block_hash.block_range==file_hash_range.block_range,
-                                        block_hash.byte_range==file_hash_range.byte_range,
-                                        block_hash.hash_result==file_hash_range.hash_result) {
+                                match (block_hash.block_range()==file_hash_range.block_range(),
+                                        block_hash.byte_range()==file_hash_range.byte_range(),
+                                        block_hash.hash_result()==file_hash_range.hash_result()) {
                                     (true, true, true) => {/*All good, do nothing*/},
                                     (true, true, false) => {
-                                        abort_hash_loop = Err(VerificationError::MismatchedHash(file_hash_range.hash_result,block_hash.hash_result));
+                                        let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
+                                        let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
+                                        abort_hash_loop = Err(VerificationError::MismatchedHash(file_hash_box,block_hash_box));
                                         break;
                                     }
                                     (_, _, _) => {
