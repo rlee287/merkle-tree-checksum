@@ -64,12 +64,11 @@ where
         let hash_input = match block_interval {
             1 => {
                 let block_size_as_usize: usize = block_size.try_into().unwrap();
-                let mut file_vec: Vec::<u8> = Vec::with_capacity(block_size_as_usize+1);
+                let mut file_vec: Vec::<u8> = vec![0x00; block_size_as_usize+1];
 
-                // First resize to block_size to read in a full block...
-                file_vec.resize(block_size_as_usize+1, 0);
-                // Prepend 0x00 before reading in file contents
-                file_vec[0] = 0x00;
+                // Initial size to block_size to read in a full block...
+                // 0x00 already prepended before reading in file contents
+                //file_vec[0] = 0x00;
                 // Should be optimized out in release mode
                 #[cfg(debug_assertions)]
                 {
@@ -108,9 +107,15 @@ where
                         break;
                     }
                 }
-                let mut combined_input = hash_vector.concat();
+                let mut combined_input = Vec::with_capacity(
+                    <T as Digest>::output_size()*(branch as usize)+1);
                 // Prepend 0x01
                 combined_input.insert(0, 0x01);
+                for hash in hash_vector {
+                    combined_input.extend(hash);
+                }
+                debug_assert_eq!(combined_input.len(),
+                    <T as Digest>::output_size()*(branch as usize)+1);
                 combined_input
             }
         };
