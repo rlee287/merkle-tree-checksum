@@ -1,4 +1,4 @@
-use merkle_tree::{BlockRange, merkle_hash_file};
+use merkle_tree::{BlockRange, HashRange, merkle_hash_file};
 
 use std::io::Cursor;
 use digest::Digest;
@@ -77,7 +77,22 @@ fn test_tree() {
 
     // TODO: check other elements of HashRange too
     assert_eq!(3, vec_consumer_backing.len());
-    assert_eq!(ref_leaf0_hash.as_slice(), vec_consumer_backing[0].hash_result.as_ref());
-    assert_eq!(ref_leaf1_hash.as_slice(), vec_consumer_backing[1].hash_result.as_ref());
-    assert_eq!(ref_tree_hash.as_slice(), vec_consumer_backing[2].hash_result.as_ref());
+    let ref_leaf0_hashrange = HashRange::new(
+        BlockRange::new(0, 0, true),
+        BlockRange::new(0, 3, true),
+        ref_leaf0_hash.to_vec().into_boxed_slice()
+    );
+    let ref_leaf1_hashrange = HashRange::new(
+        BlockRange::new(1, 1, true),
+        BlockRange::new(4, 7, true),
+        ref_leaf1_hash.to_vec().into_boxed_slice()
+    );
+    let ref_tree_hashrange = HashRange::new(
+        BlockRange::new(0, 1, true),
+        BlockRange::new(0, 7, true),
+        ref_tree_hash.to_vec().into_boxed_slice()
+    );
+    assert_eq!(ref_leaf0_hashrange, vec_consumer_backing[0]);
+    assert_eq!(ref_leaf1_hashrange, vec_consumer_backing[1]);
+    assert_eq!(ref_tree_hashrange, vec_consumer_backing[2]);
 }
