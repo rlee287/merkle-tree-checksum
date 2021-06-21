@@ -566,7 +566,6 @@ fn run() -> i32 {
                         if let Some((file_hash_box, quoted_name)) = hash_parts {
                             assert_eq!(filename_str,
                                 enquote::unquote(&quoted_name).unwrap());
-                            // Use quoted version for ease of parsing
                             if final_hash == file_hash_box {
                                 abort_hash_loop = Ok(());
                             } else {
