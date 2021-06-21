@@ -52,10 +52,11 @@ enum VerificationError {
 }
 //impl Error for VerificationError {}
 
+#[derive(Debug)]
 enum FileHandleWrapper<W, R>
 where
-    W: Write+Send,
-    R: BufRead+Seek+Send
+    W: Write+Send+std::fmt::Debug,
+    R: BufRead+Seek+Send+std::fmt::Debug
 {
     Writer(Box<W>),
     Reader(Box<R>)
