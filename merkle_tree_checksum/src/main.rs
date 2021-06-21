@@ -27,7 +27,7 @@ use utils::escape_chars;
 use digest::Digest;
 use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
-use merkle_tree::merkle_hash_file;
+use merkle_tree::{merkle_hash_file, BlockRange, HashRange};
 use utils::HashFunctions;
 use utils::MpscConsumer;
 
@@ -46,7 +46,7 @@ enum HashCommand {
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum VerificationError {
-    MismatchedHash(Box<[u8]>,Box<[u8]>), // Stored, Computed
+    MismatchedHash(Option<BlockRange>, Box<[u8]>,Box<[u8]>), // Bytes, Stored, Computed
     MalformedEntry(String), // String is the malformed line
     OutOfOrderEntry // TODO: remove this later
 }
@@ -462,7 +462,7 @@ fn run() -> i32 {
             })
             .unwrap();
 
-        let (tx, rx) = mpsc::channel::<merkle_tree::HashRange>();
+        let (tx, rx) = mpsc::channel::<HashRange>();
         let tx_wrap = MpscConsumer::new_async(tx);
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
@@ -516,7 +516,7 @@ fn run() -> i32 {
                                     (true, true, false) => {
                                         let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
                                         let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
-                                        abort_hash_loop = Err(VerificationError::MismatchedHash(file_hash_box,block_hash_box));
+                                        abort_hash_loop = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), file_hash_box,block_hash_box));
                                         break;
                                     }
                                     (_, _, _) => {
@@ -576,7 +576,7 @@ fn run() -> i32 {
                             if final_hash == file_hash_box {
                                 abort_hash_loop = Ok(());
                             } else {
-                                abort_hash_loop = Err(VerificationError::MismatchedHash(file_hash_box, final_hash));
+                                abort_hash_loop = Err(VerificationError::MismatchedHash(None, file_hash_box, final_hash));
                             }
                         } else {
                             abort_hash_loop = Err(VerificationError::MalformedEntry(line));
@@ -594,8 +594,18 @@ fn run() -> i32 {
                     eprintln!("Info: {} hash matches", filename_str);
                 }
             },
-            Err(VerificationError::MismatchedHash(stored,computed)) => {
-                eprint!("Error: {} has hash mismatch:\n  stored: {}\n  computed: {}\n", filename_str,
+            Err(VerificationError::MismatchedHash(range,stored,computed)) => {
+                let range_str = match range {
+                    Some(r) => {
+                        format!(" over file bytes {}", r)
+                    },
+                    None => "".to_owned()
+                };
+                eprintln!(concat!(
+                    "Error: {} has hash mismatch{}:\n",
+                    "  stored:   {}\n",
+                    "  computed: {}\n"),
+                    filename_str, range_str,
                     Vec::<u8>::encode_hex::<String>(&stored.into_vec()),
                     Vec::<u8>::encode_hex::<String>(&computed.into_vec()));
                 if cmd_matches.is_present("failfast") {
