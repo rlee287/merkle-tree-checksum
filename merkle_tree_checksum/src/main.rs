@@ -168,8 +168,12 @@ fn run() -> i32 {
 
             let mut file_vec : Vec<PathBuf> = Vec::new();
             // Parse version number
-            let version_line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
-            match parse_functions::check_version_line(&version_line) {
+            let version_line = parse_functions::next_noncomment_line(&mut hash_file_reader);
+            if version_line.is_err() {
+                eprintln!("Error: unable to read in version line");
+                return 1;
+            }
+            match parse_functions::check_version_line(&version_line.unwrap()) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
                     let range_str = concat!("^",crate_version!());
@@ -195,10 +199,15 @@ fn run() -> i32 {
             let mut hash_param_arr = [String::default(), String::default(), String::default()];
             for i in 0..3 {
                 // TODO: this may need adjusting for newline handling
-                let line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
-                assert!(line.ends_with('\n'));
-                // Slice to remove newline
-                hash_param_arr[i] = line[..line.len()-1].to_string();
+                let line_result = parse_functions::next_noncomment_line(&mut hash_file_reader);
+                if let Ok(line) = line_result {
+                    assert!(line.ends_with('\n'));
+                    // Slice to remove newline
+                    hash_param_arr[i] = line[..line.len()-1].to_string();
+                } else {
+                    eprintln!("Error: unable to read in parameter line");
+                    return 1;
+                }
             }
             let (block_size_result,
                 branch_factor_result,
