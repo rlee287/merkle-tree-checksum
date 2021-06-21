@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use std::io::{self, BufRead};
-use semver::{Version, VersionReq};
+use semver::Version;
 
 use std::sync::Arc;
 use lazy_static::lazy_static;
@@ -20,7 +20,6 @@ pub(crate) enum ParsingErrors {
     MissingParameter,
     BadParameterValue(String),
     MalformedVersion(String),
-    BadVersion(Version),
 }
 
 lazy_static! {
@@ -73,9 +72,6 @@ pub(crate) fn check_version_line(version_line: &str)
             );
         }
         let version_str = &version_str_token[1..];
-        // TODO: adjust allowable ranges as things get developed more
-        let range_str = concat!("^",crate_version!());
-        let recognized_range = VersionReq::parse(range_str).unwrap();
         let file_version = match Version::parse(version_str) {
             Ok(v) => v,
             Err(_e) => {
@@ -84,9 +80,6 @@ pub(crate) fn check_version_line(version_line: &str)
                 );
             }
         };
-        if !recognized_range.matches(&file_version) {
-            return Err(ParsingErrors::BadVersion(file_version));
-        }
         version_obj = Some(file_version);
     } else {
         return Err(ParsingErrors::MalformedFile);

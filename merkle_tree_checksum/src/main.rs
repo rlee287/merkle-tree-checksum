@@ -18,6 +18,8 @@ use chrono::Local;
 use std::fs::File;
 use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
+
+use semver::VersionReq;
 use parse_functions::{ParsingErrors, extract_short_hash_parts, extract_long_hash_parts};
 use std::path::{Path,PathBuf};
 use utils::escape_chars;
@@ -167,8 +169,14 @@ fn run() -> i32 {
             // Parse version number
             let version_line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
             match parse_functions::check_version_line(&version_line) {
-                Ok(_v) => {
-                    // Do nothing for now, select version format later
+                Ok(version) => {
+                    // TODO: Do more precise version checking later
+                    let range_str = concat!("^",crate_version!());
+                    let recognized_range = VersionReq::parse(range_str).unwrap();
+                    if !recognized_range.matches(&version) {
+                        eprintln!("Error: hash file has unsupported version {}", version);
+                        return 1;
+                    }
                 },
                 Err(e) => match e {
                     ParsingErrors::MalformedFile => {
@@ -177,10 +185,6 @@ fn run() -> i32 {
                     },
                     ParsingErrors::MalformedVersion(s) => {
                         eprintln!("Error: hash file has malformed version {}",s);
-                        return 1;
-                    }
-                    ParsingErrors::BadVersion(s) => {
-                        eprintln!("Error: hash file has unsupported version {}", s);
                         return 1;
                     }
                     _ => unreachable!()
