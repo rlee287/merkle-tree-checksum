@@ -539,19 +539,25 @@ fn run() -> i32 {
         pb_hash.finish_at_current_pos();
         pb_thread_handle.join().unwrap();
 
-        let final_hash = thread_handle.join().unwrap();
+        let final_hash_option = thread_handle.join().unwrap();
 
         if !is_quiet && abort_hash_loop.is_ok() {
             assert_eq!(pb_hash.position(), pb_hash.length());
         }
 
         if short_output {
+            /*
+             * Only using final result for short output
+             * A None result means the channel hung up
+             * This is only possible in long mode when an error occurs
+             */
+            let final_hash = final_hash_option.unwrap();
             match cmd_chosen {
                 HashCommand::GenerateHash => {
                     if let FileHandleWrapper::Writer(w) = &mut hash_file_handle {
                         let escaped_filename = escape_chars(filename_str);
                         writeln!(w, "{}  {}",
-                            hex::encode(final_hash.as_ref()),
+                            hex::encode(final_hash),
                             enquote::enquote('"', &escaped_filename)).unwrap();
                         w.flush().unwrap();
                     } else {

@@ -13,9 +13,15 @@ use generic_array::GenericArray;
 use merkle_utils::*;
 pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum HelperErrSignal {
+    FileEOF,
+    ConsumerErr
+}
+
 pub fn merkle_hash_file<F, D, C>(mut file: F, block_size: u32, branch: u16,
         mut hash_queue: C)
-         -> Box<[u8]>
+         -> Option<Box<[u8]>>
 where
     F: Read + Seek,
     D: Digest,
@@ -33,9 +39,9 @@ where
 
     let block_range = BlockRange::new(0, effective_block_count, false);
     let hash_out = merkle_tree_file_helper::<_, D>(&mut file,
-        block_size, block_count, block_range, branch, &mut hash_queue).unwrap();
+        block_size, block_count, block_range, branch, &mut hash_queue).ok()?;
     debug_assert_eq!(file_len, hash_out.1);
-    return hash_out.0.to_vec().into_boxed_slice();
+    return Some(hash_out.0.to_vec().into_boxed_slice());
 }
 
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
@@ -45,7 +51,7 @@ fn merkle_tree_file_helper<F, T>(file: &mut F,
         block_size: u32, block_count: u64, block_range: BlockRange,
         branch: u16,
         hash_queue: &mut dyn Consumer<HashRange>)
-        -> Option<(GenericArray<u8, T::OutputSize>, u64)>
+        -> Result<(GenericArray<u8, T::OutputSize>, u64), HelperErrSignal>
 where
     F: Read + Seek,
     T: Digest
@@ -98,12 +104,19 @@ where
                     let slice_end = slice_start+block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end, false);
                     let subhash_res = merkle_tree_file_helper::<F, T>(file, block_size, block_count, slice_range, branch, hash_queue);
-                    if let Some(subhash) = subhash_res {
-                        hash_vector.push(subhash.0);
-                        current_pos = subhash.1;
-                    } else {
-                        // None -> out of range, and so will rest
-                        break;
+                    // adjust
+                    match subhash_res {
+                        Ok(subhash) => {
+                            hash_vector.push(subhash.0);
+                            current_pos = subhash.1;
+                        },
+                        Err(HelperErrSignal::FileEOF) => {
+                            // None -> out of range, and so will the rest
+                            break;
+                        },
+                        Err(HelperErrSignal::ConsumerErr) => {
+                            return Err(HelperErrSignal::ConsumerErr);
+                        }
                     }
                 }
                 let hash_vector_len = hash_vector.len();
@@ -137,9 +150,12 @@ where
         let block_range = BlockRange::new(start_block, end_block, true);
         let byte_range = BlockRange::new(start_byte, end_byte_file, true);
         let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
-        hash_queue.accept(block_hash_result).unwrap();
-        return Some((hash_result, current_pos));
+        if hash_queue.accept(block_hash_result).is_ok() {
+            return Ok((hash_result, current_pos));
+        } else {
+            return Err(HelperErrSignal::ConsumerErr);
+        }
     } else {
-        return None;
+        return Err(HelperErrSignal::FileEOF);
     }
 }
