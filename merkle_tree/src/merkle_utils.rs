@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
 
 use std::fmt;
-use std::io::{Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
+use std::io::Result as IOResult;
+use std::io::ErrorKind;
 
 use std::ops::{RangeBounds, Bound, RangeInclusive, Range};
 
@@ -53,6 +55,58 @@ pub fn seek_len(seekable: &mut dyn Seek) -> u64 {
     }
     // return
     len
+}
+// Functions like normal `read`, but with additional guarantees:
+// - Slice is always filled when there is enough data left to read
+// - When not enough data is left, slice is filled up to returned length
+// - File cursor will be at its original position if an error occurs
+pub(crate) fn read_into_slice<R: Read+Seek>(reader: &mut R, slice: &mut [u8]) -> IOResult<usize> {
+    // stream_position Result from seek, which only fails on negative locations
+    let reader_pos_old = reader.stream_position().unwrap();
+    let read_exact_result = reader.read_exact(slice);
+    match read_exact_result {
+        Ok(()) => Ok(slice.len()),
+        Err(e) => {
+            if e.kind() == ErrorKind::UnexpectedEof {
+                // Read as much as possible
+                /*
+                 * - read guarantees same-pos-on-err but read_exact doesn't,
+                 *   so reset seek pos
+                 * - seek only fails on negative locations
+                 */
+                reader.seek(SeekFrom::Start(reader_pos_old)).unwrap();
+                let mut vec_read_buf: Vec<u8> = Vec::new();
+                let read_len_res = reader.read_to_end(&mut vec_read_buf);
+                if read_len_res.is_err() {
+                    // read_to_end may read nonzero bytes even if error occured
+                    reader.seek(SeekFrom::Start(reader_pos_old)).unwrap();
+                    return read_len_res
+                }
+                let read_len = read_len_res.unwrap();
+                debug_assert_eq!(read_len, vec_read_buf.len());
+                slice[..read_len].copy_from_slice(&vec_read_buf);
+                Ok(read_len)
+            } else {
+                Err(e)
+            }
+        }
+    }
+    /*if read_exact_result.is_ok() {
+        Ok(slice.len())
+    } else if matches!(read_exact_result, EOF_ERR) {
+        // Read as much as possible
+        reader.seek(SeekFrom::Start(reader_pos_old)).unwrap();
+        let mut vec_read_buf: Vec<u8> = Vec::new();
+        let read_len = reader.read_to_end(&mut vec_read_buf)?;
+        for i in 0..read_len {
+            slice[i] = vec_read_buf[i];
+        }
+        Ok(read_len)
+    } else if let Err(e) = read_exact_result {
+        Err(e)
+    } else {
+        unreachable!()
+    }*/
 }
 
 // Match to <opening [> 0x#-0x# <closing ] or )>, with # being hex digits
