@@ -71,6 +71,11 @@ fn run() -> i32 {
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
+        .after_help(concat!("Note: sha512-based hashes ",
+            "(sha384, sha512, sha512trunc224, and sha512trunc256) ",
+            "can be significantly faster than sha256-based hashes ",
+            "(sha224 and sha256) ",
+            "on 64-bit systems that lack SHA hardware acceleration."))
         .arg(Arg::with_name("hash").long("hash-function").short("f")
             .takes_value(true)
             .default_value("sha256").possible_values(&HashFunctions::variants())
@@ -101,7 +106,8 @@ fn run() -> i32 {
             .help("Output file"))
         .arg(Arg::with_name("short").long("short").short("s")
             .help("Write only the summary hash")
-            .long_help("Write only the summary hash to the output. This will make identifying corrupted locations impossible."))
+            .long_help(concat!("Write only the summary hash to the output. ",
+                "This will make identifying corrupted locations impossible.")))
         .arg(Arg::with_name("FILES").required(true)
             .multiple(true).last(true));
     let check_hash_command = SubCommand::with_name(VERIFY_HASH_CMD_NAME)
@@ -109,7 +115,8 @@ fn run() -> i32 {
         .setting(AppSettings::UnifiedHelpMessage)
         .arg(Arg::with_name("failfast").long("fail-fast")
             .help("Bail immediately on hash mismatch")
-            .long_help("Skip checking the rest of the listed files as soon as an error is detected."))
+            .long_help(concat!("Skip checking the rest of the files ",
+                "when a hash mismatch is detected.")))
         .arg(Arg::with_name("FILE").required(true)
             .help("File containing the hashes to check"));
 
@@ -121,7 +128,10 @@ fn run() -> i32 {
         .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::UnifiedHelpMessage)
         .arg(Arg::with_name("quiet").long("quiet").short("q")
-            .help("Hide the progress bar"))
+            .multiple(true)
+            .help("Print less text")
+            .long_help(concat!("Specify once to hide progress bars. ",
+                "Specify twice to suppress all output besides errors.")))
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
 
@@ -343,7 +353,7 @@ fn run() -> i32 {
     }
     let file_list = file_list_result.unwrap();
 
-    let is_quiet = matches.is_present("quiet");
+    let quiet_count = matches.occurrences_of("quiet");
 
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
@@ -372,7 +382,7 @@ fn run() -> i32 {
         HashFunctions::sha512trunc256 => Sha512Trunc256::output_size()
     };
 
-    if !is_quiet && hash_enum == HashFunctions::crc32
+    if quiet_count < 2 && hash_enum == HashFunctions::crc32
             && cmd_chosen == HashCommand::GenerateHash {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
@@ -438,29 +448,36 @@ fn run() -> i32 {
         let file_size = file_obj.metadata().unwrap().len();
         let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor).unwrap();
         let pb_file_style = ProgressStyle::default_bar()
-        .template("{msg:24!} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>9}");
+        // 4 = max length of message strings below
+        .template("{msg:4} {bar:20} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>11}");
         let pb_hash_style = ProgressStyle::default_bar()
-            .template("{msg:24!} {pos:>8}/{len:8} | {per_sec:>9} [{elapsed_precise}] ETA [{eta_precise}]");
+            .template("{msg:4} {bar:20} {pos:>9}/{len:9} | {per_sec:>11} [{elapsed_precise}] ETA [{eta}]");
 
         let pb_holder = MultiProgress::new();
         let pb_file = pb_holder.add(ProgressBar::new(file_size));
         let pb_hash = pb_holder.add(ProgressBar::new(pb_hash_len));
 
-        if is_quiet {
+        if quiet_count >= 1 {
+            if quiet_count == 1 {
+                eprintln!("Hashing {}...", filename_str);
+            }
             pb_holder.set_draw_target(ProgressDrawTarget::hidden());
-        } else {
+        } else { // quiet_count == 0
             pb_hash.set_style(pb_hash_style);
             pb_file.set_style(pb_file_style);
 
             let file_part = Path::new(&file_name).file_name().unwrap()
                     .to_str().unwrap();
-            let abbreviated_msg = utils::abbreviate_filename(file_part, 24);
-            assert!(abbreviated_msg.len() <= 24);
 
-            pb_file.set_message(abbreviated_msg.clone());
+            // Leave a padding of at least 3 equal signs on each side
+            // TODO: use fixed width, or scale with terminal size?
+            let abbreviated_msg = utils::abbreviate_filename(file_part, 80-8);
+            eprintln!("{:=^80}", " ".to_owned()+&abbreviated_msg+" ");
+
+            pb_file.set_message("File");
             pb_file.set_draw_rate(4);
 
-            pb_hash.set_message(abbreviated_msg);
+            pb_hash.set_message("Hash");
             pb_hash.set_draw_rate(4);
         }
 
@@ -550,7 +567,7 @@ fn run() -> i32 {
 
         let final_hash_option = thread_handle.join().unwrap();
 
-        if !is_quiet && abort_hash_loop.is_ok() {
+        if quiet_count == 0 && abort_hash_loop.is_ok() {
             assert_eq!(pb_hash.position(), pb_hash.length());
         }
 
@@ -599,8 +616,17 @@ fn run() -> i32 {
         }
         match abort_hash_loop {
             Ok(_) => {
-                if cmd_chosen == HashCommand::VerifyHash {
-                    eprintln!("Info: {} hash matches", filename_str);
+                if quiet_count < 2 {
+                    match cmd_chosen {
+                        HashCommand::GenerateHash => {
+                            if quiet_count == 1 {
+                                eprintln!("Done")
+                            }
+                        },
+                        HashCommand::VerifyHash => {
+                            eprintln!("Info: {} hash matches", filename_str)
+                        }
+                    }
                 }
             },
             Err(VerificationError::MismatchedHash(range,stored,computed)) => {

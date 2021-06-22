@@ -39,6 +39,7 @@ pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
             (&name_chars[..begin_half_len]).iter().collect::<String>()
             + "~"
             + &name_chars[name.len()-end_half_len..].iter().collect::<String>();
+        assert!(ret_str.len() <= len_threshold);
         return ret_str;
     }
 }
