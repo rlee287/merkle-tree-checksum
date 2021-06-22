@@ -101,7 +101,8 @@ fn run() -> i32 {
             .help("Output file"))
         .arg(Arg::with_name("short").long("short").short("s")
             .help("Write only the summary hash")
-            .long_help("Write only the summary hash to the output. This will make identifying corrupted locations impossible."))
+            .long_help(concat!("Write only the summary hash to the output. ",
+                "This will make identifying corrupted locations impossible.")))
         .arg(Arg::with_name("FILES").required(true)
             .multiple(true).last(true));
     let check_hash_command = SubCommand::with_name(VERIFY_HASH_CMD_NAME)
@@ -109,7 +110,8 @@ fn run() -> i32 {
         .setting(AppSettings::UnifiedHelpMessage)
         .arg(Arg::with_name("failfast").long("fail-fast")
             .help("Bail immediately on hash mismatch")
-            .long_help("Skip checking the rest of the listed files as soon as an error is detected."))
+            .long_help(concat!("Skip checking the rest of the files ",
+                "when a hash mismatch is detected.")))
         .arg(Arg::with_name("FILE").required(true)
             .help("File containing the hashes to check"));
 
