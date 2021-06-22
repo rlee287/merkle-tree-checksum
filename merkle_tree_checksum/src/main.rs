@@ -71,6 +71,11 @@ fn run() -> i32 {
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
+        .after_help(concat!("Note: sha512-based hashes ",
+            "(sha384, sha512, sha512trunc224, and sha512trunc256) ",
+            "can be significantly faster than sha256-based hashes ",
+            "(sha224 and sha256) ",
+            "on 64-bit systems that lack SHA hardware acceleration."))
         .arg(Arg::with_name("hash").long("hash-function").short("f")
             .takes_value(true)
             .default_value("sha256").possible_values(&HashFunctions::variants())
