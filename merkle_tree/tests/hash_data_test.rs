@@ -39,8 +39,8 @@ fn test_empty_string() {
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
         (empty_cursor, 4, 2, throwaway_consumer);
-    let tree_hash_ref = tree_hash.as_ref();
-    assert_eq!(ref_hash_ref, tree_hash_ref);
+    let tree_hash_box = tree_hash.unwrap();
+    assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
 
 #[test]
@@ -53,8 +53,8 @@ fn test_partial_block() {
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
         (empty_cursor, 4, 2, throwaway_consumer);
-    let tree_hash_ref = tree_hash.as_ref();
-    assert_eq!(ref_hash_ref, tree_hash_ref);
+    let tree_hash_box = tree_hash.unwrap();
+    assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
 
 #[test]
@@ -72,8 +72,8 @@ fn test_tree() {
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
         (empty_cursor, 4, 2, vec_consumer);
-    let tree_hash_ref = tree_hash.as_ref();
-    assert_eq!(ref_tree_hash.as_slice(), tree_hash_ref);
+    let tree_hash_box = tree_hash.unwrap();
+    assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
 
     // TODO: check other elements of HashRange too
     assert_eq!(3, vec_consumer_backing.len());
