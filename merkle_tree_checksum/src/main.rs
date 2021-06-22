@@ -438,9 +438,10 @@ fn run() -> i32 {
         let file_size = file_obj.metadata().unwrap().len();
         let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor).unwrap();
         let pb_file_style = ProgressStyle::default_bar()
-        .template("{msg:24!} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>9}");
+        // 4 = max length of message strings below
+        .template("{msg:4} {bar:20} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>11}");
         let pb_hash_style = ProgressStyle::default_bar()
-            .template("{msg:24!} {pos:>8}/{len:8} | {per_sec:>9} [{elapsed_precise}] ETA [{eta_precise}]");
+            .template("{msg:4} {bar:20} {pos:>9}/{len:9} | {per_sec:>11} [{elapsed_precise}] ETA [{eta}]");
 
         let pb_holder = MultiProgress::new();
         let pb_file = pb_holder.add(ProgressBar::new(file_size));
@@ -454,13 +455,16 @@ fn run() -> i32 {
 
             let file_part = Path::new(&file_name).file_name().unwrap()
                     .to_str().unwrap();
-            let abbreviated_msg = utils::abbreviate_filename(file_part, 24);
-            assert!(abbreviated_msg.len() <= 24);
 
-            pb_file.set_message(abbreviated_msg.clone());
+            // Leave a padding of at least 2 equal signs on each side
+            // TODO: use fixed width, or scale with terminal size?
+            let abbreviated_msg = utils::abbreviate_filename(file_part, 80-4);
+            eprintln!("{:=^80}", " ".to_owned()+&abbreviated_msg+" ");
+
+            pb_file.set_message("File");
             pb_file.set_draw_rate(4);
 
-            pb_hash.set_message(abbreviated_msg);
+            pb_hash.set_message("Hash");
             pb_hash.set_draw_rate(4);
         }
 
