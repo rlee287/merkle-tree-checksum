@@ -48,7 +48,9 @@ pub const fn node_count(file_size: u64, block_size: u32, branch: u16) -> Option<
 pub fn seek_len(seekable: &mut dyn Seek) -> u64 {
     let old_pos = seekable.stream_position().unwrap();
     let len = seekable.seek(SeekFrom::End(0)).unwrap();
-    seekable.seek(SeekFrom::Start(old_pos)).unwrap();
+    if old_pos != len {
+        seekable.seek(SeekFrom::Start(old_pos)).unwrap();
+    }
     // return
     len
 }
