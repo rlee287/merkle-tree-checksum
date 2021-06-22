@@ -128,7 +128,10 @@ fn run() -> i32 {
         .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::UnifiedHelpMessage)
         .arg(Arg::with_name("quiet").long("quiet").short("q")
-            .help("Hide the progress bar"))
+            .multiple(true)
+            .help("Print less text")
+            .long_help(concat!("Specify once to hide progress bars. ",
+                "Specify twice to suppress all output besides errors.")))
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
 
@@ -350,7 +353,7 @@ fn run() -> i32 {
     }
     let file_list = file_list_result.unwrap();
 
-    let is_quiet = matches.is_present("quiet");
+    let quiet_count = matches.occurrences_of("quiet");
 
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
@@ -379,7 +382,7 @@ fn run() -> i32 {
         HashFunctions::sha512trunc256 => Sha512Trunc256::output_size()
     };
 
-    if !is_quiet && hash_enum == HashFunctions::crc32
+    if quiet_count < 2 && hash_enum == HashFunctions::crc32
             && cmd_chosen == HashCommand::GenerateHash {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
@@ -454,18 +457,21 @@ fn run() -> i32 {
         let pb_file = pb_holder.add(ProgressBar::new(file_size));
         let pb_hash = pb_holder.add(ProgressBar::new(pb_hash_len));
 
-        if is_quiet {
+        if quiet_count >= 1 {
+            if quiet_count == 1 {
+                eprintln!("Hashing {}...", filename_str);
+            }
             pb_holder.set_draw_target(ProgressDrawTarget::hidden());
-        } else {
+        } else { // quiet_count == 0
             pb_hash.set_style(pb_hash_style);
             pb_file.set_style(pb_file_style);
 
             let file_part = Path::new(&file_name).file_name().unwrap()
                     .to_str().unwrap();
 
-            // Leave a padding of at least 2 equal signs on each side
+            // Leave a padding of at least 3 equal signs on each side
             // TODO: use fixed width, or scale with terminal size?
-            let abbreviated_msg = utils::abbreviate_filename(file_part, 80-4);
+            let abbreviated_msg = utils::abbreviate_filename(file_part, 80-8);
             eprintln!("{:=^80}", " ".to_owned()+&abbreviated_msg+" ");
 
             pb_file.set_message("File");
@@ -561,7 +567,7 @@ fn run() -> i32 {
 
         let final_hash_option = thread_handle.join().unwrap();
 
-        if !is_quiet && abort_hash_loop.is_ok() {
+        if quiet_count == 0 && abort_hash_loop.is_ok() {
             assert_eq!(pb_hash.position(), pb_hash.length());
         }
 
@@ -610,8 +616,17 @@ fn run() -> i32 {
         }
         match abort_hash_loop {
             Ok(_) => {
-                if cmd_chosen == HashCommand::VerifyHash {
-                    eprintln!("Info: {} hash matches", filename_str);
+                if quiet_count < 2 {
+                    match cmd_chosen {
+                        HashCommand::GenerateHash => {
+                            if quiet_count == 1 {
+                                eprintln!("Done")
+                            }
+                        },
+                        HashCommand::VerifyHash => {
+                            eprintln!("Info: {} hash matches", filename_str)
+                        }
+                    }
                 }
             },
             Err(VerificationError::MismatchedHash(range,stored,computed)) => {
