@@ -23,6 +23,12 @@ pub(crate) enum ParsingErrors {
 }
 
 lazy_static! {
+    // SIZE_REGEX does not need to match normal ints
+    static ref SIZE_REGEX: Regex =
+        Regex::new(concat!("^",
+            "(?:([1-9][0-9]*)|([0-9]+\\.[0-9]+))",
+            "(K|M|G)(i)?",
+            "$")).unwrap();
     static ref QUOTED_FILENAME_REGEX: Regex =
         Regex::new(concat!("^",
             "((?:[[:xdigit:]][[:xdigit:]])+  )?",
@@ -30,6 +36,48 @@ lazy_static! {
             ",?",
             "(?:\\n|\\r\\n)?",
             "$")).unwrap();
+}
+pub(crate) fn size_str_to_num(input_str: &str) -> Option<u32> {
+    match input_str.parse::<u32>() {
+        Ok(val) => Some(val),
+        Err(_) => {
+            let number_parts_res = SIZE_REGEX.captures(input_str);
+            if let Some(captures) = number_parts_res {
+                assert!(captures.get(1).is_some() ^ captures.get(2).is_some());
+                let base_mult: u32 = match captures.get(4) {
+                    Some(_) => 1024,
+                    None => 1000
+                };
+                let exponent = match &captures[3] {
+                    "K" => 1,
+                    "M" => 2,
+                    "G" => 3,
+                    _ => unreachable!()
+                };
+                let unit_mult = base_mult.pow(exponent);
+                let final_val: u32;
+                if captures.get(1).is_some() {
+                    let text_val: u32 = captures[1].parse::<u32>().unwrap();
+                    final_val = unit_mult.checked_mul(text_val)?;
+                } else if captures.get(2).is_some() {
+                    // f64 can represent integers beyond u32 so no issue here
+                    let mut text_val: f64 = captures[2].parse::<f64>().unwrap();
+                    text_val *= unit_mult as f64;
+                    assert!(text_val >= 0.0);
+                    if text_val > u32::MAX.into() {
+                        return None;
+                    }
+                    // Overflow was previously checked-for
+                    final_val = text_val.trunc() as u32;
+                } else {
+                    unreachable!();
+                }
+                Some(final_val)
+            } else {
+                None
+            }
+        }
+    }
 }
 
 // (bool, String) is (is_short, quoted_filename)
@@ -122,11 +170,11 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
                 }
             },
             "Block size" => {
-                block_size_result = match value.parse::<u32>() {
-                    Ok(0) | Err(_) => Err(ParsingErrors::BadParameterValue(
+                block_size_result = match size_str_to_num(value) {
+                    Some(0) | None => Err(ParsingErrors::BadParameterValue(
                         format!("invalid block size {}", value)
                     )),
-                    Ok(val) => Ok(val)
+                    Some(val) => Ok(val)
                 }
             },
             "Branching factor" => {

@@ -20,7 +20,8 @@ use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
 
 use semver::VersionReq;
-use parse_functions::{ParsingErrors, extract_short_hash_parts, extract_long_hash_parts};
+use parse_functions::{ParsingErrors, size_str_to_num,
+    extract_short_hash_parts, extract_long_hash_parts};
 use std::path::{Path,PathBuf};
 use utils::escape_chars;
 
@@ -94,13 +95,15 @@ fn run() -> i32 {
         .arg(Arg::with_name("blocksize").long("block-length").short("l")
             .takes_value(true).default_value("4096")
             .validator(|input_str| -> Result<(), String> {
-                match input_str.parse::<u32>() {
-                    Ok(0) => Err("blocksize must be positive".to_string()),
-                    Ok(_) => Ok(()),
-                    Err(err) => Err(err.to_string())
+                match size_str_to_num(&input_str) {
+                    Some(0) => Err("blocksize must be positive".to_owned()),
+                    Some(_) => Ok(()),
+                    None => Err("blocksize is invalid".to_owned())
                 }
             })
-            .help("Block size to hash over, in bytes"))
+            .help("Block size to hash over, in bytes")
+            .long_help(concat!("Block size to hash over ",
+                "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
         .arg(Arg::with_name("output").long("output").short("o")
             .takes_value(true).required(true)
             .help("Output file"))
@@ -154,8 +157,8 @@ fn run() -> i32 {
             // Validators should already have caught errors
             (
                 utils::get_file_list(file_vec),
-                value_t!(cmd_matches, "blocksize", u32)
-                    .unwrap_or_else(|e| e.exit()),
+                size_str_to_num(
+                    cmd_matches.value_of("blocksize").unwrap()).unwrap(),
                 value_t!(cmd_matches, "branch", u16)
                     .unwrap_or_else(|e| e.exit()),
                 cmd_matches.is_present("short"),
