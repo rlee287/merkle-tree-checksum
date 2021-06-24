@@ -135,12 +135,15 @@ impl BlockRange {
             false => init_range
         }
     }
+    #[inline]
     pub fn start(&self) -> u64 {
         self.start
     }
+    #[inline]
     pub fn end(&self) -> u64 {
         self.end
     }
+    #[inline]
     pub fn include_end(&self) -> bool {
         self.include_end
     }
@@ -217,12 +220,15 @@ impl HashRange {
                 byte_range,
                 hash_result}
     }
+    #[inline]
     pub fn block_range(&self) -> BlockRange {
         self.block_range
     }
+    #[inline]
     pub fn byte_range(&self) -> BlockRange {
         self.byte_range
     }
+    #[inline]
     pub fn hash_result(&self) -> &[u8] {
         self.hash_result.as_ref()
     }
