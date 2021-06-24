@@ -48,6 +48,7 @@ enum HashCommand {
 enum VerificationError {
     MismatchedHash(Option<BlockRange>, Box<[u8]>,Box<[u8]>), // Bytes, Stored, Computed
     MalformedEntry(String), // String is the malformed line
+    UnexpectedEof,
     OutOfOrderEntry // TODO: remove this later
 }
 //impl Error for VerificationError {}
@@ -527,7 +528,11 @@ fn run() -> i32 {
                     HashCommand::VerifyHash => {
                         if let FileHandleWrapper::Reader(r) = &mut hash_file_handle {
                             let mut line = String::new();
-                            r.read_line(&mut line).unwrap();
+                            let line_len = r.read_line(&mut line).unwrap();
+                            if line_len == 0 {
+                                abort_hash_loop = Err(VerificationError::UnexpectedEof);
+                                    break;
+                            }
 
                             let hash_parts = extract_long_hash_parts(
                                 &line, 2*expected_hash_len);
@@ -655,11 +660,26 @@ fn run() -> i32 {
                 eprintln!("Error: hash file has malformed entry {}", line);
                 return 2;
             }
+            Err(VerificationError::UnexpectedEof) => {
+                eprintln!("Error: unexpected EOF in hash file");
+                return 2;
+            }
             Err(VerificationError::OutOfOrderEntry) => {
                 eprintln!("Error: hash file has unsupported out-of-order entry");
                 return 2;
             }
 
+        }
+    }
+    // Consume hash_file_handle to ensure it isn't used again
+    if let FileHandleWrapper::Reader(mut r) = hash_file_handle {
+        // Check if at EOF
+        let current_pos = r.stream_position().unwrap();
+        r.seek(SeekFrom::End(0)).unwrap();
+        let end_pos = r.stream_position().unwrap();
+        if current_pos != end_pos {
+            eprintln!("Error: hash file has extra lines left over");
+            return 2;
         }
     }
     return hashing_final_status;
