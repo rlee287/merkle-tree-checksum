@@ -91,22 +91,6 @@ pub(crate) fn read_into_slice<R: Read+Seek>(reader: &mut R, slice: &mut [u8]) ->
             }
         }
     }
-    /*if read_exact_result.is_ok() {
-        Ok(slice.len())
-    } else if matches!(read_exact_result, EOF_ERR) {
-        // Read as much as possible
-        reader.seek(SeekFrom::Start(reader_pos_old)).unwrap();
-        let mut vec_read_buf: Vec<u8> = Vec::new();
-        let read_len = reader.read_to_end(&mut vec_read_buf)?;
-        for i in 0..read_len {
-            slice[i] = vec_read_buf[i];
-        }
-        Ok(read_len)
-    } else if let Err(e) = read_exact_result {
-        Err(e)
-    } else {
-        unreachable!()
-    }*/
 }
 
 // Match to <opening [> 0x#-0x# <closing ] or )>, with # being hex digits
