@@ -11,7 +11,7 @@ use std::str::FromStr;
 use regex::Regex;
 use hex::FromHex;
 use crate::utils::HashFunctions;
-use merkle_tree::{BlockRange, HashRange};
+use merkle_tree::{BlockRange, HashRange, branch_t, block_t};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ParsingErrors {
@@ -37,14 +37,14 @@ lazy_static! {
             "(?:\\n|\\r\\n)?",
             "$")).unwrap();
 }
-pub(crate) fn size_str_to_num(input_str: &str) -> Option<u32> {
-    match input_str.parse::<u32>() {
+pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
+    match input_str.parse::<block_t>() {
         Ok(val) => Some(val),
         Err(_) => {
             let number_parts_res = SIZE_REGEX.captures(input_str);
             if let Some(captures) = number_parts_res {
                 assert!(captures.get(1).is_some() ^ captures.get(2).is_some());
-                let base_mult: u32 = match captures.get(4) {
+                let base_mult: block_t = match captures.get(4) {
                     Some(_) => 1024,
                     None => 1000
                 };
@@ -54,21 +54,21 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<u32> {
                     "G" => 3,
                     _ => unreachable!()
                 };
-                let unit_mult = base_mult.pow(exponent);
-                let final_val: u32;
+                let unit_mult = base_mult.checked_pow(exponent)?;
+                let final_val: block_t;
                 if captures.get(1).is_some() {
-                    let text_val: u32 = captures[1].parse::<u32>().unwrap();
+                    let text_val: block_t = captures[1].parse().unwrap();
                     final_val = unit_mult.checked_mul(text_val)?;
                 } else if captures.get(2).is_some() {
                     // f64 can represent integers beyond u32 so no issue here
                     let mut text_val: f64 = captures[2].parse::<f64>().unwrap();
                     text_val *= unit_mult as f64;
                     assert!(text_val >= 0.0);
-                    if text_val > u32::MAX.into() {
+                    if text_val > block_t::MAX.into() {
                         return None;
                     }
                     // Overflow was previously checked-for
-                    final_val = text_val.trunc() as u32;
+                    final_val = text_val.trunc() as block_t;
                 } else {
                     unreachable!();
                 }
@@ -142,13 +142,13 @@ pub(crate) fn check_version_line(version_line: &str)
 // Tuple is block_size, branch, hash, other_error
 // TODO: tunnel full error information out when necessary
 pub(crate) fn get_hash_params(string_arr: &[String; 3])
-        -> (Result<u32, ParsingErrors>,
-            Result<u16, ParsingErrors>,
+        -> (Result<block_t, ParsingErrors>,
+            Result<branch_t, ParsingErrors>,
             Result<HashFunctions, ParsingErrors>,
             Vec<ParsingErrors>) {
-    let mut block_size_result: Result<u32, ParsingErrors>
+    let mut block_size_result: Result<block_t, ParsingErrors>
             = Err(ParsingErrors::MissingParameter);
-    let mut branch_factor_result: Result<u16, ParsingErrors>
+    let mut branch_factor_result: Result<branch_t, ParsingErrors>
             = Err(ParsingErrors::MissingParameter);
     let mut hash_function_result: Result<HashFunctions, ParsingErrors>
             = Err(ParsingErrors::MissingParameter);
@@ -178,7 +178,7 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
                 }
             },
             "Branching factor" => {
-                branch_factor_result = match value.parse::<u16>() {
+                branch_factor_result = match value.parse::<branch_t>() {
                     Ok(0) | Ok(1) | Err(_) =>
                         Err(ParsingErrors::BadParameterValue(
                             format!("invalid branching factor {}", value)

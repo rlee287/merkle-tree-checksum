@@ -12,6 +12,11 @@ use regex::Regex;
 
 use lazy_static::lazy_static;
 
+#[allow(non_camel_case_types)]
+pub type branch_t = u16;
+#[allow(non_camel_case_types)]
+pub type block_t = u32;
+
 pub(crate) const fn ceil_div(num: u64, denom: u64) -> u64 {
     let result = num / denom;
     // return
@@ -29,7 +34,7 @@ pub(crate) const fn exp_ceil_log(number: u64, base: u16) -> u64 {
     // return
     result
 }
-pub const fn node_count(file_size: u64, block_size: u32, branch: u16) -> Option<u64> {
+pub const fn node_count(file_size: u64, block_size: block_t, branch: branch_t) -> Option<u64> {
     let block_count = ceil_div(file_size, block_size as u64);
     let mut node_count = block_count;
     let mut node_at_layer_count = block_count;
