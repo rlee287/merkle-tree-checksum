@@ -11,7 +11,6 @@ publish = false
 [dependencies]
 #clap = "~2.33.3"
 walkdir = "2.3.1"
-chrono = "0.4.19"
 indicatif = "0.16.0"
 enquote = "1.0.3"
 semver = "1.0.0"

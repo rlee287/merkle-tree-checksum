@@ -13,8 +13,6 @@ use std::convert::TryInto;
 use std::thread;
 use std::sync::mpsc;
 
-use chrono::Local;
-
 use std::fs::File;
 use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
@@ -404,7 +402,6 @@ fn run() -> i32 {
             };
             // Write file prelude
             writeln!(file_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
-            writeln!(file_handle, "# Started {}", Local::now().to_rfc2822()).unwrap();
             writeln!(file_handle, "Hash function: {}", hash_enum).unwrap();
             writeln!(file_handle, "Block size: {}", block_size).unwrap();
             writeln!(file_handle, "Branching factor: {}", branch_factor).unwrap();
