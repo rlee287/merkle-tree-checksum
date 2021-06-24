@@ -13,11 +13,9 @@ To address second pre-image attacks, we prepend the byte `0x00` before hashing d
 
 ## Output File Format
 
-The output file starts with the program version, options, and a timestamp. Afterwards, the output lists the hashes associated with each file.
+The output file starts with the program version, followed by options. Afterwards, the output lists the hashes associated with each file.
 
 The version is printed as `merkle_tree_checksum v{version}`.
-
-The timestamp is printed as `# Started `, followed by a timestamp in RFC 2822 format.
 
 The options for computing the hash tree are then printed, with a format like below (where the items may be in any order):
 

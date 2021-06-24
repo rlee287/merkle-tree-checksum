@@ -1,7 +1,7 @@
 [package]
 name = "merkle_tree_checksum"
 description = "Computes a Merkle Tree hash over the given files"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["rlee287 <rlee287@yahoo.com>"]
 edition = "2018"
 publish = false
@@ -11,7 +11,6 @@ publish = false
 [dependencies]
 #clap = "~2.33.3"
 walkdir = "2.3.1"
-chrono = "0.4.19"
 indicatif = "0.16.0"
 enquote = "1.0.3"
 semver = "1.0.0"
