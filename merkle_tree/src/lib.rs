@@ -12,6 +12,7 @@ use generic_array::GenericArray;
 
 use merkle_utils::*;
 pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
+pub use merkle_utils::{branch_t, block_t};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum HelperErrSignal {
@@ -19,9 +20,9 @@ enum HelperErrSignal {
     ConsumerErr
 }
 
-pub fn merkle_hash_file<F, D, C>(mut file: F, block_size: u32, branch: u16,
-        mut hash_queue: C)
-         -> Option<Box<[u8]>>
+pub fn merkle_hash_file<F, D, C>(mut file: F,
+        block_size: block_t, branch: branch_t,
+        mut hash_queue: C) -> Option<Box<[u8]>>
 where
     F: Read + Seek,
     D: Digest,
@@ -48,8 +49,8 @@ where
 // Block range includes the first and excludes the last
 // Second element of tuple is seek position
 fn merkle_tree_file_helper<F, T>(file: &mut F,
-        block_size: u32, block_count: u64, block_range: BlockRange,
-        branch: u16,
+        block_size: block_t, block_count: u64, block_range: BlockRange,
+        branch: branch_t,
         hash_queue: &mut dyn Consumer<HashRange>)
         -> Result<(GenericArray<u8, T::OutputSize>, u64), HelperErrSignal>
 where

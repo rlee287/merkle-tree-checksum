@@ -12,6 +12,11 @@ use regex::Regex;
 
 use lazy_static::lazy_static;
 
+#[allow(non_camel_case_types)]
+pub type branch_t = u16;
+#[allow(non_camel_case_types)]
+pub type block_t = u32;
+
 pub(crate) const fn ceil_div(num: u64, denom: u64) -> u64 {
     let result = num / denom;
     // return
@@ -29,7 +34,7 @@ pub(crate) const fn exp_ceil_log(number: u64, base: u16) -> u64 {
     // return
     result
 }
-pub const fn node_count(file_size: u64, block_size: u32, branch: u16) -> Option<u64> {
+pub const fn node_count(file_size: u64, block_size: block_t, branch: branch_t) -> Option<u64> {
     let block_count = ceil_div(file_size, block_size as u64);
     let mut node_count = block_count;
     let mut node_at_layer_count = block_count;
@@ -91,22 +96,6 @@ pub(crate) fn read_into_slice<R: Read+Seek>(reader: &mut R, slice: &mut [u8]) ->
             }
         }
     }
-    /*if read_exact_result.is_ok() {
-        Ok(slice.len())
-    } else if matches!(read_exact_result, EOF_ERR) {
-        // Read as much as possible
-        reader.seek(SeekFrom::Start(reader_pos_old)).unwrap();
-        let mut vec_read_buf: Vec<u8> = Vec::new();
-        let read_len = reader.read_to_end(&mut vec_read_buf)?;
-        for i in 0..read_len {
-            slice[i] = vec_read_buf[i];
-        }
-        Ok(read_len)
-    } else if let Err(e) = read_exact_result {
-        Err(e)
-    } else {
-        unreachable!()
-    }*/
 }
 
 // Match to <opening [> 0x#-0x# <closing ] or )>, with # being hex digits

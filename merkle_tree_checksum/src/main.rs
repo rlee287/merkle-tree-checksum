@@ -20,7 +20,8 @@ use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
 
 use semver::VersionReq;
-use parse_functions::{ParsingErrors, extract_short_hash_parts, extract_long_hash_parts};
+use parse_functions::{ParsingErrors, size_str_to_num,
+    extract_short_hash_parts, extract_long_hash_parts};
 use std::path::{Path,PathBuf};
 use utils::escape_chars;
 
@@ -28,6 +29,7 @@ use digest::Digest;
 use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use merkle_tree::{merkle_hash_file, BlockRange, HashRange};
+use merkle_tree::{branch_t, block_t};
 use utils::HashFunctions;
 use utils::MpscConsumer;
 
@@ -84,7 +86,7 @@ fn run() -> i32 {
         .arg(Arg::with_name("branch").long("branch-factor").short("b")
             .takes_value(true).default_value("4")
             .validator(|input_str| -> Result<(), String> {
-                match input_str.parse::<u16>() {
+                match input_str.parse::<branch_t>() {
                     Ok(0) | Ok(1) => Err("branch must be >= 2".to_string()),
                     Ok(_) => Ok(()),
                     Err(err) => Err(err.to_string())
@@ -94,13 +96,15 @@ fn run() -> i32 {
         .arg(Arg::with_name("blocksize").long("block-length").short("l")
             .takes_value(true).default_value("4096")
             .validator(|input_str| -> Result<(), String> {
-                match input_str.parse::<u32>() {
-                    Ok(0) => Err("blocksize must be positive".to_string()),
-                    Ok(_) => Ok(()),
-                    Err(err) => Err(err.to_string())
+                match size_str_to_num(&input_str) {
+                    Some(0) => Err("blocksize must be positive".to_owned()),
+                    Some(_) => Ok(()),
+                    None => Err("blocksize is invalid".to_owned())
                 }
             })
-            .help("Block size to hash over, in bytes"))
+            .help("Block size to hash over, in bytes")
+            .long_help(concat!("Block size to hash over ",
+                "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
         .arg(Arg::with_name("output").long("output").short("o")
             .takes_value(true).required(true)
             .help("Output file"))
@@ -147,16 +151,16 @@ fn run() -> i32 {
     };
 
     let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
-            (Result<Vec<PathBuf>, String>, u32, u16, bool, HashFunctions, Option<u64>)
+            (Result<Vec<PathBuf>, String>, block_t, branch_t, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash => {
             let file_vec = cmd_matches.values_of("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
                 utils::get_file_list(file_vec),
-                value_t!(cmd_matches, "blocksize", u32)
-                    .unwrap_or_else(|e| e.exit()),
-                value_t!(cmd_matches, "branch", u16)
+                size_str_to_num(
+                    cmd_matches.value_of("blocksize").unwrap()).unwrap(),
+                value_t!(cmd_matches, "branch", branch_t)
                     .unwrap_or_else(|e| e.exit()),
                 cmd_matches.is_present("short"),
                 value_t!(cmd_matches, "hash", HashFunctions)
@@ -493,7 +497,7 @@ fn run() -> i32 {
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
-                let buf_size: usize = (block_size*(branch_factor as u32))
+                let buf_size: usize = (block_size*(branch_factor as block_t))
                     .clamp(4*1024, 256*1024).try_into().unwrap();
                 let file_buf = BufReader::with_capacity(
                     buf_size, file_obj);
