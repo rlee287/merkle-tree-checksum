@@ -1,6 +1,5 @@
 #![forbid(unsafe_code)]
 
-use std::io::{self, BufRead};
 use semver::Version;
 
 use std::sync::Arc;
@@ -85,21 +84,6 @@ pub(crate) fn extract_quoted_filename(line: &str) -> Option<(bool, String)> {
     let line_portions = QUOTED_FILENAME_REGEX.captures(line)?;
     debug_assert!(line_portions.len() == 3);
     Some((line_portions.get(1).is_some(), line_portions[2].to_string()))
-}
-
-// Contents of working_str is the line after comments
-pub(crate) fn next_noncomment_line(reader: &mut dyn BufRead) -> io::Result<String> {
-    let mut working_str = String::default();
-    loop {
-        let read_len = reader.read_line(&mut working_str)?;
-        if read_len == 0 {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "EOF"));
-        }
-        if !working_str.is_empty() && working_str.as_bytes()[0] != b'#' {
-            return Ok(working_str);
-        }
-        working_str.clear();
-    }
 }
 
 pub(crate) fn check_version_line(version_line: &str)

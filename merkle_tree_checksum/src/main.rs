@@ -181,12 +181,13 @@ fn run() -> i32 {
 
             let mut file_vec : Vec<PathBuf> = Vec::new();
             // Parse version number
-            let version_line = parse_functions::next_noncomment_line(&mut hash_file_reader);
-            if version_line.is_err() {
+            let mut version_line = String::new();
+            let version_read_result = hash_file_reader.read_line(&mut version_line);
+            if version_read_result.is_err() {
                 eprintln!("Error: unable to read in version line");
                 return 1;
             }
-            match parse_functions::check_version_line(&version_line.unwrap()) {
+            match parse_functions::check_version_line(&version_line) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
                     let range_str = concat!("^",crate_version!());
@@ -212,8 +213,9 @@ fn run() -> i32 {
             let mut hash_param_arr = [String::default(), String::default(), String::default()];
             for i in 0..3 {
                 // TODO: this may need adjusting for newline handling
-                let line_result = parse_functions::next_noncomment_line(&mut hash_file_reader);
-                if let Ok(line) = line_result {
+                let mut line = String::new();
+                let line_result = hash_file_reader.read_line(&mut line);
+                if line_result.is_ok() {
                     assert!(line.ends_with('\n'));
                     // Slice to remove newline
                     hash_param_arr[i] = line[..line.len()-1].to_string();
@@ -250,7 +252,12 @@ fn run() -> i32 {
                 return 1;
             }
 
-            let format_line = parse_functions::next_noncomment_line(&mut hash_file_reader).unwrap();
+            let mut format_line = String::new();
+            let format_line_result = hash_file_reader.read_line(&mut format_line);
+            if format_line_result.is_err() {
+                eprintln!("Error: hash file is malformed: file should have file list or hash list");
+                return 1;
+            }
             let is_short_hash = match format_line.as_str() {
                 "Hashes:\n" => true,
                 "Files:\n" => false,
@@ -266,7 +273,8 @@ fn run() -> i32 {
                 false => None
             };
             loop {
-                let next_line_result = parse_functions::next_noncomment_line(&mut hash_file_reader);
+                let mut next_line = String::new();
+                let next_line_result = hash_file_reader.read_line(&mut next_line);
                 if let Err(read_result) = next_line_result {
                     if read_result.kind() == std::io::ErrorKind::UnexpectedEof {
                         if !is_short_hash {
@@ -277,7 +285,6 @@ fn run() -> i32 {
                     }
                     break;
                 }
-                let next_line = next_line_result.unwrap();
                 if let Some((short_from_regex, quoted_name)) = parse_functions::extract_quoted_filename(&next_line) {
                     assert_eq!(short_from_regex, is_short_hash);
                     let unquoted_name = match enquote::unquote(&quoted_name) {
