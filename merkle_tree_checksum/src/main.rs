@@ -275,15 +275,15 @@ fn run() -> i32 {
             loop {
                 let mut next_line = String::new();
                 let next_line_result = hash_file_reader.read_line(&mut next_line);
-                if let Err(read_result) = next_line_result {
-                    if read_result.kind() == std::io::ErrorKind::UnexpectedEof {
+                if let Err(read_err) = next_line_result {
+                    if read_err.kind() == std::io::ErrorKind::UnexpectedEof {
                         if !is_short_hash {
                             eprintln!("Error: unexpected EOF reading hashes");
                         }
                     } else {
-                        eprintln!("Error: Error in reading file: {}", read_result);
+                        eprintln!("Error: Error in reading file: {}", read_err);
                     }
-                    break;
+                    return 1;
                 }
                 if let Some((short_from_regex, quoted_name)) = parse_functions::extract_quoted_filename(&next_line) {
                     assert_eq!(short_from_regex, is_short_hash);
