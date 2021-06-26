@@ -32,7 +32,7 @@ lazy_static! {
         Regex::new(concat!("^",
             "((?:[[:xdigit:]][[:xdigit:]])+  )?",
             "(\"(?:[^\"]|\\\\\")+\")",
-            ",?",
+            ",?", // Keep for backwards compatibility
             "(?:\\n|\\r\\n)?",
             "$")).unwrap();
 }

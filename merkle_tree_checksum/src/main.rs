@@ -421,7 +421,7 @@ fn run() -> i32 {
                     .map(|string| escape_chars(string))
                     .map(|string| enquote::enquote('"', &string))
                     .collect();
-                writeln!(file_handle, "{}", list_str.join(",\n")).unwrap();
+                writeln!(file_handle, "{}", list_str.join("\n")).unwrap();
             }
             writeln!(file_handle, "Hashes:").unwrap();
             file_handle.flush().unwrap();
