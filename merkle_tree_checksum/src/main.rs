@@ -259,8 +259,8 @@ fn run() -> i32 {
                 return 1;
             }
             let is_short_hash = match format_line.as_str() {
-                "Hashes:\n" => true,
-                "Files:\n" => false,
+                "Hashes:\n" | "Hashes:\r\n" => true,
+                "Files:\n" | "Files:\r\n" => false,
                 _ => {
                     eprintln!("Error: hash file is malformed: file should have file list or hash list");
                     return 1;
@@ -296,7 +296,7 @@ fn run() -> i32 {
                         }
                     };
                     file_vec.push(PathBuf::from(unquoted_name));
-                } else if next_line == "Hashes:\n" {
+                } else if next_line == "Hashes:\n" || next_line == "Hashes:\r\n" {
                     break;
                 } else {
                     eprintln!("Error: encountered malformed file entry {}",
