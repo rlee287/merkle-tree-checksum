@@ -13,7 +13,7 @@ use std::convert::TryInto;
 use std::thread;
 use std::sync::mpsc;
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
 
@@ -107,6 +107,8 @@ fn run() -> i32 {
         .arg(Arg::with_name("output").long("output").short("o")
             .takes_value(true).required(true)
             .help("Output file"))
+        .arg(Arg::with_name("overwrite").long("overwrite")
+            .help("Overwrite output file if it already exists"))
         .arg(Arg::with_name("short").long("short").short("s")
             .help("Write only the summary hash")
             .long_help(concat!("Write only the summary hash to the output. ",
@@ -400,7 +402,14 @@ fn run() -> i32 {
     let mut hash_file_handle: FileHandleWrapper<_,_> = match cmd_chosen {
         HashCommand::GenerateHash => {
             let write_file_name = cmd_matches.value_of("output").unwrap();
-            let mut file_handle = match File::create(write_file_name) {
+            let overwrite = cmd_matches.is_present("overwrite");
+            let open_result = match overwrite {
+                true => OpenOptions::new().write(true)
+                    .truncate(true).open(write_file_name),
+                false => OpenOptions::new().write(true)
+                    .create_new(true).open(write_file_name)
+            };
+            let mut file_handle = match open_result {
                 Ok(file) => file,
                 Err(err) => {
                     eprintln!("Error opening file {} for writing: {}",
