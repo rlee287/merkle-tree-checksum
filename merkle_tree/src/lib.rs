@@ -81,7 +81,7 @@ where
                     let current_pos_actual = file.stream_position().unwrap();
                     debug_assert_eq!(current_pos_actual, current_pos);
                 }
-                let bytes_read = read_into_slice(file, &mut file_vec[1..]).unwrap();
+                let bytes_read = read_into_slice(file, Some(current_pos), &mut file_vec[1..]).unwrap();
                 // ...then shrink the vector to the number of bytes read, if needed
                 if bytes_read < block_size.try_into().unwrap() {
                     // Default is irrelevant as we're shrinking
