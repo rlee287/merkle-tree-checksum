@@ -65,9 +65,24 @@ pub fn seek_len(seekable: &mut dyn Seek) -> u64 {
 // - Slice is always filled when there is enough data left to read
 // - When not enough data is left, slice is filled up to returned length
 // - File cursor will be at its original position if an error occurs
-pub(crate) fn read_into_slice<R: Read+Seek>(reader: &mut R, slice: &mut [u8]) -> IOResult<usize> {
+// expected_seek_loc provides a way to pass in current location, if available
+// When provided, this saves a seek operation if the given slice was full
+pub(crate) fn read_into_slice<R: Read+Seek>(
+        reader: &mut R, expected_seek_loc: Option<u64>, slice: &mut [u8])
+        -> IOResult<usize> {
     // stream_position Result from seek, which only fails on negative locations
-    let reader_pos_old = reader.stream_position().unwrap();
+    let reader_pos_old = match expected_seek_loc {
+        Some(given_pos) => {
+            #[cfg(debug_assertions)]
+            {
+                // In debug mode, verify that the given seek loc is correct
+                let actual_pos = reader.stream_position().unwrap();
+                assert_eq!(actual_pos, given_pos);
+            }
+            given_pos
+        }
+        None => reader.stream_position().unwrap()
+    };
     let read_exact_result = reader.read_exact(slice);
     match read_exact_result {
         Ok(()) => Ok(slice.len()),
