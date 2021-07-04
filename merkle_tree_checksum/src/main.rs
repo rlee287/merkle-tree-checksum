@@ -151,6 +151,8 @@ fn run() -> i32 {
         (_, _) => panic!("Invalid subcommand detected")
     };
 
+    let mut hashing_final_status = 0;
+
     let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
             (Result<Vec<PathBuf>, String>, block_t, branch_t, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
@@ -287,8 +289,8 @@ fn run() -> i32 {
                     }
                     return 1;
                 }
-                if let Some((short_from_regex, quoted_name)) = parse_functions::extract_quoted_filename(&next_line) {
-                    assert_eq!(short_from_regex, is_short_hash);
+                if let Some((quoted_name, len_option)) = parse_functions::extract_quoted_filename(&next_line) {
+                    assert_eq!(len_option.is_none(), is_short_hash);
                     let unquoted_name = match enquote::unquote(&quoted_name) {
                         Ok(s) => s,
                         Err(e) => {
@@ -297,7 +299,26 @@ fn run() -> i32 {
                             return 1;
                         }
                     };
-                    file_vec.push(PathBuf::from(unquoted_name));
+                    let path = PathBuf::from(unquoted_name.clone());
+                    if let Some(expected_len) = len_option {
+                        let actual_len = path.metadata().unwrap().len();
+                        if actual_len == expected_len {
+                            file_vec.push(path);
+                        } else {
+                            eprintln!(concat!(
+                                "Error: {} has length mismatch:\n",
+                                "  expected: {}\n",
+                                "  actual:   {}\n"),
+                                unquoted_name, expected_len, actual_len);
+                            if cmd_matches.is_present("failfast") {
+                                return 2;
+                            } else {
+                                hashing_final_status = 2;
+                            }
+                        }
+                    } else {
+                        file_vec.push(path);
+                    }
                 } else if next_line == "Hashes:\n" || next_line == "Hashes:\r\n" {
                     break;
                 } else {
@@ -426,9 +447,16 @@ fn run() -> i32 {
             if !short_output {
                 writeln!(file_handle, "Files:").unwrap();
                 let list_str: Vec<String> = file_list.iter()
-                    .map(|path| path.to_str().unwrap())
-                    .map(|string| escape_chars(string))
-                    .map(|string| enquote::enquote('"', &string))
+                    .map(|path| {
+                        let path_metadata = path.metadata().unwrap();
+                        (path.to_str().unwrap(), path_metadata.len())
+                    })
+                    .map(|(string, len)| {
+                        let escaped_str = escape_chars(string);
+                        let quoted_str = enquote::enquote('"', &escaped_str);
+                        (quoted_str, len)
+                    })
+                    .map(|(string, len)| format!("{} {:#x} bytes", string, len))
                     .collect();
                 writeln!(file_handle, "{}", list_str.join("\n")).unwrap();
             }
@@ -452,7 +480,7 @@ fn run() -> i32 {
             FileHandleWrapper::Reader(Box::new(BufReader::new(hash_file)))
         }
     };
-    let mut hashing_final_status = 0;
+
     for (file_index, file_name) in file_list.iter().enumerate() {
         let filename_str = file_name.to_str().unwrap();
         let file_obj = match File::open(file_name.to_owned()) {
@@ -466,8 +494,8 @@ fn run() -> i32 {
         let file_size = file_obj.metadata().unwrap().len();
         let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor).unwrap();
         let pb_file_style = ProgressStyle::default_bar()
-        // 4 = max length of message strings below
-        .template("{msg:4} {bar:20} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>11}");
+            // 4 = max length of message strings below
+            .template("{msg:4} {bar:20} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>11}");
         let pb_hash_style = ProgressStyle::default_bar()
             .template("{msg:4} {bar:20} {pos:>9}/{len:9} | {per_sec:>11} [{elapsed_precise}] ETA [{eta}]");
 

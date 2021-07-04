@@ -21,6 +21,7 @@ pub(crate) enum ParsingErrors {
     MalformedVersion(String),
 }
 
+const NEWLINE_REGEX: &str = "(?:\\n|\\r\\n)?";
 lazy_static! {
     // SIZE_REGEX does not need to match normal ints
     static ref SIZE_REGEX: Regex =
@@ -28,13 +29,23 @@ lazy_static! {
             "(?:([1-9][0-9]*)|([0-9]+\\.[0-9]+))",
             "(K|M|G)(i)?",
             "$")).unwrap();
-    static ref QUOTED_FILENAME_REGEX: Regex =
-        Regex::new(concat!("^",
-            "((?:[[:xdigit:]][[:xdigit:]])+  )?",
-            "(\"(?:[^\"]|\\\\\")+\")",
-            ",?", // Keep for backwards compatibility
-            "(?:\\n|\\r\\n)?",
-            "$")).unwrap();
+    static ref QUOTED_FILENAME_REGEX: Regex = {
+        let hash_regex = "(?:[[:xdigit:]][[:xdigit:]])+";
+        let quotation_regex = "(\"(?:[^\"]|\\\\\")+\")";
+        let length_regex = "0x([[:xdigit:]]+) bytes";
+        /*
+         * Capture groups:
+         * 0: entire thing
+         * 1: first branch of the |
+         * 2: quoted string for first branch
+         * 3: second branch of the |
+         * 4: quoted string for the second branch
+         * 5: file length for the second branch
+         */
+        let combined_regex = format!("^(?:({0}  {1})|({1} {2})){3}$",
+            hash_regex, quotation_regex, length_regex, NEWLINE_REGEX);
+        Regex::new(&combined_regex).unwrap()
+    };
 }
 pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
     match input_str.parse::<block_t>() {
@@ -79,11 +90,16 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
     }
 }
 
-// (bool, String) is (is_short, quoted_filename)
-pub(crate) fn extract_quoted_filename(line: &str) -> Option<(bool, String)> {
+// (String, Option<u64>) is (quoted_filename, len_if_present)
+pub(crate) fn extract_quoted_filename(line: &str) -> Option<(String, Option<u64>)> {
     let line_portions = QUOTED_FILENAME_REGEX.captures(line)?;
-    debug_assert!(line_portions.len() == 3);
-    Some((line_portions.get(1).is_some(), line_portions[2].to_string()))
+    debug_assert!(line_portions.len() == 6);
+    if line_portions.get(1).is_some() {
+        Some((line_portions[2].to_string(), None))
+    } else {
+        debug_assert!(line_portions.get(3).is_some());
+        Some((line_portions[4].to_string(), Some(u64::from_str_radix(&line_portions[5], 16).unwrap())))
+    }
 }
 
 pub(crate) fn check_version_line(version_line: &str)
@@ -190,8 +206,8 @@ cached!{
         // hex_digits{count}  "(anything except quote | escaped quote)+" optional_newline
         let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
         let quoted_name_regex = "(\"(?:[^\"]|\\\\\")+\")";
-        let regex_str = format!("^{}  {}(?:\\n|\\r\\n)?$",
-            hash_regex, quoted_name_regex);
+        let regex_str = format!("^{}  {}{}$",
+            hash_regex, quoted_name_regex, NEWLINE_REGEX);
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
@@ -211,8 +227,8 @@ cached!{
         let blockrange_regex = "\\[0x([[:xdigit:]]+)-0x([[:xdigit:]]+)(\\]|\\))";
         let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
         // rfile_id hexrange hexrange hex_digits{count} optional_newline
-        let regex_str = format!("^{0} {1} {1} {2}(?:\\n|\\r\\n)?$",
-            file_id_regex, blockrange_regex, hash_regex);
+        let regex_str = format!("^{0} {1} {1} {2}{3}$",
+            file_id_regex, blockrange_regex, hash_regex, NEWLINE_REGEX);
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
