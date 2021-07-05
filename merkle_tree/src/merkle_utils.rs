@@ -119,7 +119,7 @@ lazy_static! {
     static ref BLOCK_RANGE_REGEX: Regex = 
         Regex::new(r"^\[0x([[:xdigit:]]+)-0x([[:xdigit:]]+)(\]|\))$").unwrap();
 }
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone)]
 pub struct BlockRange {
     start: u64,
     end: u64,
@@ -127,16 +127,17 @@ pub struct BlockRange {
 }
 impl BlockRange {
     pub fn new(start: u64, end: u64, include_end: bool) -> BlockRange {
+        if include_end {
+            assert!(end >= start);
+        } else {
+            assert!(end > start);
+        }
         BlockRange {start, end, include_end}
     }
     pub fn range(&self) -> u64 {
-        let init_range = match self.start <= self.end {
-            true  => self.end - self.start,
-            false => self.start - self.end
-        };
         match self.include_end {
-            true => init_range + 1,
-            false => init_range
+            true => self.end-self.start+1,
+            false => self.end-self.start
         }
     }
     #[inline]
@@ -150,6 +151,37 @@ impl BlockRange {
     #[inline]
     pub fn include_end(&self) -> bool {
         self.include_end
+    }
+}
+
+impl PartialEq for BlockRange {
+    fn eq(&self, other: &Self) -> bool {
+        let start_match = self.start == other.start;
+        let end_match = match (self.include_end, other.include_end) {
+            (true, true) => self.end == other.end,
+            (true, false) => match self.end.checked_add(1) {
+                Some(self_end_exclusive) => self_end_exclusive == other.end,
+                None => false
+            },
+            (false, true) => match other.end.checked_add(1) {
+                Some(other_end_exclusive) => self.end == other_end_exclusive,
+                None => false
+            },
+            (false, false) => self.end == other.end
+        };
+        start_match && end_match
+    }
+}
+impl Eq for BlockRange {}
+
+impl std::hash::Hash for BlockRange {
+    fn hash<H: std::hash::Hasher> (&self, hasher: &mut H) {
+        let range_end = match self.include_end {
+            true => self.end,
+            false => self.end-1
+        };
+        let range_tuple = self.start..=range_end;
+        range_tuple.hash(hasher);
     }
 }
 

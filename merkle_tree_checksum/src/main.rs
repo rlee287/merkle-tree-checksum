@@ -113,8 +113,8 @@ fn run() -> i32 {
             .help("Write only the summary hash")
             .long_help(concat!("Write only the summary hash to the output. ",
                 "This will make identifying corrupted locations impossible.")))
-        .arg(Arg::with_name("FILES").required(true)
-            .multiple(true).last(true));
+        .arg(Arg::with_name("FILES").required(true).last(true)
+            .multiple(true).max_values(u16::MAX.into()));
     let check_hash_command = SubCommand::with_name(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
