@@ -9,7 +9,6 @@ mod crc32_utils;
 mod utils;
 mod parse_functions;
 
-use std::convert::TryInto;
 use std::thread;
 use std::sync::mpsc;
 
@@ -23,7 +22,6 @@ use parse_functions::{ParsingErrors, size_str_to_num,
 use std::path::{Path,PathBuf};
 use utils::escape_chars;
 
-use digest::Digest;
 use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use merkle_tree::{merkle_hash_file, BlockRange, HashRange};
@@ -216,13 +214,17 @@ fn run() -> i32 {
             // Read in the next three lines
             let mut hash_param_arr = [String::default(), String::default(), String::default()];
             for i in 0..3 {
-                // TODO: this may need adjusting for newline handling
                 let mut line = String::new();
                 let line_result = hash_file_reader.read_line(&mut line);
                 if line_result.is_ok() {
                     assert!(line.ends_with('\n'));
-                    // Slice to remove newline
-                    hash_param_arr[i] = line[..line.len()-1].to_string();
+                    if &line[line.len()-2..line.len()-1] == "\r" {
+                        // \r\n ending
+                        hash_param_arr[i] = line[..line.len()-2].to_string();
+                    } else {
+                        // \n ending
+                        hash_param_arr[i] = line[..line.len()-1].to_string();
+                    }
                 } else {
                     eprintln!("Error: unable to read in parameter line");
                     return 1;
