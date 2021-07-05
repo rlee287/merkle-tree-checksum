@@ -502,6 +502,8 @@ fn run() -> i32 {
                     buf_size, file_obj);*/
                 // Don't use BufReader because of a bad interaction with stream_position and seeks flushing the buffer
                 // See merkle_utils::read_into_slice and https://github.com/rust-lang/rust/issues/86832 for details
+                // Addition of the seek parameter *should* be a workaround 
+                // Do more testing and benchmarking later
                 // TODO: use rustversion cfg once this is fixed
                 let pb_wrap = pb_file.wrap_read(file_obj);
                 let result = merkle_tree_thunk(pb_wrap,
