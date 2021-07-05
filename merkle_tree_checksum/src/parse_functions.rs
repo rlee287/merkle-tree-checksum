@@ -21,9 +21,18 @@ pub(crate) enum ParsingErrors {
     MalformedVersion(String),
 }
 
+const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
 const NEWLINE_REGEX: &str = "(?:\\n|\\r\\n)?";
 lazy_static! {
     // SIZE_REGEX does not need to match normal ints
+    /*
+     * Capture groups:
+     * 0: entire thing
+     * 1: nonzero integer
+     * 2: decimal number
+     * 3: multiplier prefix
+     * 4: whether prefix is base-10 or base-2
+     */
     static ref SIZE_REGEX: Regex =
         Regex::new(concat!("^",
             "(?:([1-9][0-9]*)|([0-9]+\\.[0-9]+))",
@@ -31,7 +40,6 @@ lazy_static! {
             "$")).unwrap();
     static ref QUOTED_FILENAME_REGEX: Regex = {
         let hash_regex = "(?:[[:xdigit:]][[:xdigit:]])+";
-        let quotation_regex = "(\"(?:[^\"]|\\\\\")+\")";
         let length_regex = "0x([[:xdigit:]]+) bytes";
         /*
          * Capture groups:
@@ -43,7 +51,7 @@ lazy_static! {
          * 5: file length for the second branch
          */
         let combined_regex = format!("^(?:({0}  {1})|({1} {2})){3}$",
-            hash_regex, quotation_regex, length_regex, NEWLINE_REGEX);
+            hash_regex, QUOTED_STR_REGEX, length_regex, NEWLINE_REGEX);
         Regex::new(&combined_regex).unwrap()
     };
 }
@@ -53,6 +61,7 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
         Err(_) => {
             let number_parts_res = SIZE_REGEX.captures(input_str);
             if let Some(captures) = number_parts_res {
+                debug_assert!(captures.len() == 5);
                 assert!(captures.get(1).is_some() ^ captures.get(2).is_some());
                 let base_mult: block_t = match captures.get(4) {
                     Some(_) => 1024,
@@ -114,7 +123,7 @@ pub(crate) fn check_version_line(version_line: &str)
         return Err(ParsingErrors::MalformedFile);
     }
     if let Some(version_str_token) = version_str_iter.next() {
-        if version_str_token.as_bytes()[0] != b'v' {
+        if !version_str_token.starts_with('v') {
             return Err(
                 ParsingErrors::MalformedVersion(version_str_token.to_string())
             );
@@ -205,9 +214,14 @@ cached!{
     fn short_hash_regex(hex_digit_count: usize) -> Arc<Regex> = {
         // hex_digits{count}  "(anything except quote | escaped quote)+" optional_newline
         let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
-        let quoted_name_regex = "(\"(?:[^\"]|\\\\\")+\")";
+        /*
+         * Capture groups:
+         * 0: entire thing
+         * 1: hexadecimal hash
+         * 2: quoted filename
+         */
         let regex_str = format!("^{}  {}{}$",
-            hash_regex, quoted_name_regex, NEWLINE_REGEX);
+            hash_regex, QUOTED_STR_REGEX, NEWLINE_REGEX);
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
@@ -227,6 +241,18 @@ cached!{
         let blockrange_regex = "\\[0x([[:xdigit:]]+)-0x([[:xdigit:]]+)(\\]|\\))";
         let hash_regex = format!("([[:xdigit:]]{{{}}})", hex_digit_count);
         // rfile_id hexrange hexrange hex_digits{count} optional_newline
+        /*
+         * Capture groups:
+         * 0: entire thing
+         * 1: file id counter
+         * 2: start block, in hexadecimal
+         * 3: end block, in hexadecimal
+         * 4: whether the block range includes the end
+         * 5: start file byte, in hexadecimal
+         * 6: end file byte, in hexadecimal
+         * 7: whether the byte range includes the end
+         * 8: hexadecimal hash
+         */
         let regex_str = format!("^{0} {1} {1} {2}{3}$",
             file_id_regex, blockrange_regex, hash_regex, NEWLINE_REGEX);
         Arc::new(Regex::new(&regex_str).unwrap())
