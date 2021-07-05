@@ -111,8 +111,8 @@ fn run() -> i32 {
             .help("Write only the summary hash")
             .long_help(concat!("Write only the summary hash to the output. ",
                 "This will make identifying corrupted locations impossible.")))
-        .arg(Arg::with_name("FILES").required(true)
-            .multiple(true).last(true));
+        .arg(Arg::with_name("FILES").required(true).last(true)
+            .multiple(true).max_values(u16::MAX.into()));
     let check_hash_command = SubCommand::with_name(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
@@ -192,7 +192,7 @@ fn run() -> i32 {
             match parse_functions::check_version_line(&version_line) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
-                    let range_str = concat!("^",crate_version!());
+                    let range_str = concat!("~",crate_version!());
                     let recognized_range = VersionReq::parse(range_str).unwrap();
                     if !recognized_range.matches(&version) {
                         eprintln!("Error: hash file has unsupported version {}", version);
@@ -539,6 +539,8 @@ fn run() -> i32 {
                     buf_size, file_obj);*/
                 // Don't use BufReader because of a bad interaction with stream_position and seeks flushing the buffer
                 // See merkle_utils::read_into_slice and https://github.com/rust-lang/rust/issues/86832 for details
+                // Addition of the seek parameter *should* be a workaround 
+                // Do more testing and benchmarking later
                 // TODO: use rustversion cfg once this is fixed
                 let pb_wrap = pb_file.wrap_read(file_obj);
                 let result = merkle_tree_thunk(pb_wrap,
