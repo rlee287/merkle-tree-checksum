@@ -377,15 +377,7 @@ fn run() -> i32 {
         HashFunctions::sha512trunc256 =>
             merkle_hash_file::<_,Sha512Trunc256,_>,
     };
-    let expected_hash_len = match hash_enum {
-        HashFunctions::crc32 => Crc32::output_size(),
-        HashFunctions::sha224 => Sha224::output_size(),
-        HashFunctions::sha256 => Sha256::output_size(),
-        HashFunctions::sha384 => Sha384::output_size(),
-        HashFunctions::sha512 => Sha512::output_size(),
-        HashFunctions::sha512trunc224 => Sha512Trunc224::output_size(),
-        HashFunctions::sha512trunc256 => Sha512Trunc256::output_size()
-    };
+    let expected_hash_len = utils::enum_hash_len(hash_enum);
 
     if quiet_count < 2 && hash_enum == HashFunctions::crc32
             && cmd_chosen == HashCommand::GenerateHash {
