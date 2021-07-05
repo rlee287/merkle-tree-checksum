@@ -1,7 +1,7 @@
 // Update of https://github.com/ajungren/crc32_digest to work with digest v0.9
 #![forbid(unsafe_code)]
 
-use crc32fast::Hasher;
+use crc32fast::Hasher as Crc32Hasher;
 use std::hash::Hasher as HasherTrait;
 use std::convert::TryInto;
 use digest::{impl_write, FixedOutput, Update, Reset};
@@ -16,7 +16,7 @@ pub use digest::Digest;
 /// [`Digest`]: ../digest/trait.Digest.html
 /// [`DynDigest`]: ../digest/trait.DynDigest.html
 /// [`Hasher`]: ../crc32fast/struct.Hasher.html
-pub struct Crc32(Hasher);
+pub struct Crc32(Crc32Hasher);
 
 /*impl Crc32 {
     /// Creates a new `Crc32`.
