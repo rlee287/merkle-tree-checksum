@@ -191,7 +191,7 @@ fn run() -> i32 {
             match parse_functions::check_version_line(&version_line.unwrap()) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
-                    let range_str = concat!("^",crate_version!());
+                    let range_str = concat!("~",crate_version!());
                     let recognized_range = VersionReq::parse(range_str).unwrap();
                     if !recognized_range.matches(&version) {
                         eprintln!("Error: hash file has unsupported version {}", version);
