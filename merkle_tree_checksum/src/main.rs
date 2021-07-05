@@ -213,17 +213,17 @@ fn run() -> i32 {
             }
             // Read in the next three lines
             let mut hash_param_arr = [String::default(), String::default(), String::default()];
-            for i in 0..3 {
+            for param_str in hash_param_arr.iter_mut() {
                 let mut line = String::new();
                 let line_result = hash_file_reader.read_line(&mut line);
                 if line_result.is_ok() {
                     assert!(line.ends_with('\n'));
                     if &line[line.len()-2..line.len()-1] == "\r" {
                         // \r\n ending
-                        hash_param_arr[i] = line[..line.len()-2].to_string();
+                        *param_str = line[..line.len()-2].to_string();
                     } else {
                         // \n ending
-                        hash_param_arr[i] = line[..line.len()-1].to_string();
+                        *param_str = line[..line.len()-1].to_string();
                     }
                 } else {
                     eprintln!("Error: unable to read in parameter line");
