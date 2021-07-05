@@ -2,6 +2,10 @@
 
 extern crate merkle_tree;
 
+use digest::Digest;
+use crate::crc32_utils::Crc32;
+use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
+
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -18,6 +22,19 @@ arg_enum!{
         sha512,
         sha512trunc224,
         sha512trunc256
+    }
+}
+
+#[inline]
+pub fn enum_hash_len(hash_enum: HashFunctions) -> usize {
+    match hash_enum {
+        HashFunctions::crc32 => Crc32::output_size(),
+        HashFunctions::sha224 => Sha224::output_size(),
+        HashFunctions::sha256 => Sha256::output_size(),
+        HashFunctions::sha384 => Sha384::output_size(),
+        HashFunctions::sha512 => Sha512::output_size(),
+        HashFunctions::sha512trunc224 => Sha512Trunc224::output_size(),
+        HashFunctions::sha512trunc256 => Sha512Trunc256::output_size()
     }
 }
 
