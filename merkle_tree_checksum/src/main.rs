@@ -66,7 +66,8 @@ fn main() {
     std::process::exit(status_code);
 }
 
-fn run() -> i32 {
+//Result<ArgMatches<'a>, clap::Error>
+fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
@@ -137,8 +138,21 @@ fn run() -> i32 {
                 "Specify twice to suppress all output besides errors.")))
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
+    clap_app.get_matches_safe()
+}
 
-    let matches = clap_app.get_matches();
+fn run() -> i32 {
+    let matches_result = parse_cli();
+    if let Err(e) = matches_result {
+        // Mirror e.exit, but use scoping to call destructors
+        if e.use_stderr() {
+            eprintln!("{}", e.message);
+        } else {
+            println!("{}", e.message);
+        }
+        return 1;
+    }
+    let matches = matches_result.unwrap();
 
     let (cmd_chosen, cmd_matches): (HashCommand, ArgMatches)
             = match matches.subcommand() {
