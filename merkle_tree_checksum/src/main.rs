@@ -421,7 +421,7 @@ fn run() -> i32 {
         HashFunctions::sha512trunc256 =>
             merkle_hash_file::<_,Sha512Trunc256,_>,
     };
-    let expected_hash_len = utils::enum_hash_len(hash_enum);
+    let expected_hash_len = hash_enum.hash_len();
 
     if quiet_count < 2 && hash_enum == HashFunctions::crc32
             && cmd_chosen == HashCommand::GenerateHash {

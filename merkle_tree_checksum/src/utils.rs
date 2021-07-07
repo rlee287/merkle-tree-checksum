@@ -2,6 +2,8 @@
 
 extern crate merkle_tree;
 
+use std::convert::TryFrom;
+
 use digest::Digest;
 use crate::crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
@@ -25,16 +27,58 @@ arg_enum!{
     }
 }
 
-#[inline]
-pub fn enum_hash_len(hash_enum: HashFunctions) -> usize {
-    match hash_enum {
-        HashFunctions::crc32 => Crc32::output_size(),
-        HashFunctions::sha224 => Sha224::output_size(),
-        HashFunctions::sha256 => Sha256::output_size(),
-        HashFunctions::sha384 => Sha384::output_size(),
-        HashFunctions::sha512 => Sha512::output_size(),
-        HashFunctions::sha512trunc224 => Sha512Trunc224::output_size(),
-        HashFunctions::sha512trunc256 => Sha512Trunc256::output_size()
+type HashFunctionFromUIntErr = ();
+impl HashFunctions {
+    #[inline]
+    pub fn hash_len(&self) -> usize {
+        match self {
+            HashFunctions::crc32 => Crc32::output_size(),
+            HashFunctions::sha224 => Sha224::output_size(),
+            HashFunctions::sha256 => Sha256::output_size(),
+            HashFunctions::sha384 => Sha384::output_size(),
+            HashFunctions::sha512 => Sha512::output_size(),
+            HashFunctions::sha512trunc224 => Sha512Trunc224::output_size(),
+            HashFunctions::sha512trunc256 => Sha512Trunc256::output_size()
+        }
+    }
+}
+// Future use for binary files (and Discriminant<T> lacks stability guarantees)
+impl From<HashFunctions> for u8 {
+    #[inline]
+    fn from(val: HashFunctions) -> Self {
+        // Stability: do not change these values once committed
+        /*
+         * Encoding choices:
+         * - val & 0x80 = 0x80 if cryptographic, 0 otherwise
+         * - val & 0x40 = 0x40 if recommended for use, 0 otherwise
+         * - val & 0x20 bit reserved as a future bitflag
+         * - val & 0x1f is counter to distinguish individual hashes
+         */
+        match val {
+            HashFunctions::crc32 => 0x40,
+            // For sha2 family: set bit 0x04 to indicate sha512 base
+            HashFunctions::sha224 => 0x80,
+            HashFunctions::sha256 => 0x81,
+            HashFunctions::sha384 => 0x84,
+            HashFunctions::sha512 => 0x85,
+            HashFunctions::sha512trunc224 => 0x86,
+            HashFunctions::sha512trunc256 => 0x87
+        }
+    }
+}
+impl TryFrom<u8> for HashFunctions {
+    type Error = HashFunctionFromUIntErr;
+    fn try_from(val: u8) -> Result<Self, <Self as TryFrom<u8>>::Error> {
+        match val {
+            0x40 => Ok(HashFunctions::crc32),
+            0x80 => Ok(HashFunctions::sha224),
+            0x81 => Ok(HashFunctions::sha256),
+            0x84 => Ok(HashFunctions::sha384),
+            0x85 => Ok(HashFunctions::sha512),
+            0x86 => Ok(HashFunctions::sha512trunc224),
+            0x87 => Ok(HashFunctions::sha512trunc256),
+            _ => Err(())
+        }
     }
 }
 
@@ -140,6 +184,30 @@ impl<T> merkle_tree::Consumer<T> for MpscConsumer<T> {
                     Err(e) => Err(e.0)
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::convert::TryFrom;
+
+    #[test]
+    fn enum_u8_roundtrip() {
+        let enum_arr = [
+            HashFunctions::crc32,
+            HashFunctions::sha224,
+            HashFunctions::sha256,
+            HashFunctions::sha384,
+            HashFunctions::sha512,
+            HashFunctions::sha512trunc224,
+            HashFunctions::sha512trunc256
+        ];
+        for enum_variant in enum_arr {
+            let enum_as_u8 = u8::from(enum_variant);
+            let u8_enum_roundtrip = HashFunctions::try_from(enum_as_u8).unwrap();
+            assert_eq!(enum_variant, u8_enum_roundtrip);
         }
     }
 }
