@@ -285,6 +285,7 @@ dependencies = [
  "indicatif",
  "lazy_static",
  "merkle_tree",
+ "predicates",
  "rand",
  "regex",
  "semver",

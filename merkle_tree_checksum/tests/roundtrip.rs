@@ -10,11 +10,11 @@ use std::fs::{File, remove_file};
 use std::path::PathBuf;
 
 use assert_cmd::Command;
+use predicates::prelude::*;
 
 use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 
-// TODO: use std::panic::catch_unwind where appropriate
 // TODO: use serial_test if we pull in `syn` at any later point
 
 lazy_static! {
@@ -83,7 +83,8 @@ fn roundtrip_reference_files_short() {
             .assert();
         assert_gen
             .success()
-            .code(0);
+            .code(0)
+            .stderr(predicate::str::contains("Error").count(0));
         assert!(output_path.is_file());
     
         let mut cmd_check = Command::cargo_bin("merkle_tree_checksum").unwrap();
@@ -92,7 +93,8 @@ fn roundtrip_reference_files_short() {
             .assert();
         assert_check
             .success()
-            .code(0);
+            .code(0)
+            .stderr(predicate::str::contains("Error").count(0));
     }, {
         if output_path.is_file() {
             remove_file(output_path).unwrap();
@@ -124,7 +126,8 @@ fn gen_compare_files_long() {
             .assert();
         assert_gen
             .success()
-            .code(0);
+            .code(0)
+            .stderr(predicate::str::contains("Error").count(0));
         assert!(output_path.is_file());
     
         let output_file_obj = File::open(output_path.clone()).unwrap();
@@ -164,7 +167,8 @@ fn gen_compare_files_short() {
             .assert();
         assert_gen
             .success()
-            .code(0);
+            .code(0)
+            .stderr(predicate::str::contains("Error").count(0));
         assert!(output_path.is_file());
     
         let output_file_obj = File::open(output_path.clone()).unwrap();
