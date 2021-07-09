@@ -336,9 +336,13 @@ fn run() -> i32 {
                         file_vec.push(path);
                     }
                 } else if next_line == "Hashes:\n" || next_line == "Hashes:\r\n" {
+                    assert!(!is_short_hash);
+                    break;
+                } else if next_line.is_empty() {
+                    assert!(is_short_hash);
                     break;
                 } else {
-                    eprintln!("Error: encountered malformed file entry {}",
+                    eprintln!("Error: encountered malformed file entry {:?}",
                         next_line);
                     return 1;
                 }
@@ -433,7 +437,7 @@ fn run() -> i32 {
             let write_file_name = cmd_matches.value_of("output").unwrap();
             let overwrite = cmd_matches.is_present("overwrite");
             let open_result = match overwrite {
-                true => OpenOptions::new().write(true)
+                true => OpenOptions::new().write(true).create(true)
                     .truncate(true).open(write_file_name),
                 false => OpenOptions::new().write(true)
                     .create_new(true).open(write_file_name)
