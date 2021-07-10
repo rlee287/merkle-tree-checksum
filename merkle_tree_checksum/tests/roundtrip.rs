@@ -2,9 +2,6 @@
 mod utils;
 use utils::*;
 
-use lazy_static::lazy_static;
-use std::sync::Mutex;
-
 use std::env::{current_dir, set_current_dir};
 use std::fs::{File, remove_file};
 use std::path::PathBuf;
@@ -15,14 +12,10 @@ use predicates::prelude::*;
 use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 
-// TODO: use serial_test if we pull in `syn` at any later point
-
-lazy_static! {
-    // Based on https://github.com/rust-lang/rust/issues/43155
-    static ref LOCK_CWD: Mutex<()> = Mutex::new(());
-}
+use serial_test::serial;
 
 #[test]
+#[serial]
 fn roundtrip_reference_files_long() {
     let rand_string: String = thread_rng()
         .sample_iter(&Alphanumeric)
@@ -32,7 +25,6 @@ fn roundtrip_reference_files_long() {
     let output_name = "temp_hash_out".to_owned() + &rand_string;
     let output_path = PathBuf::from(output_name.clone());
 
-    let lock_hold = LOCK_CWD.lock().unwrap();
     cleanup_after_func!({
         let mut cmd_gen = Command::cargo_bin("merkle_tree_checksum").unwrap();
         let assert_gen = cmd_gen
@@ -58,10 +50,10 @@ fn roundtrip_reference_files_long() {
         if output_path.is_file() {
             remove_file(output_path).unwrap();
         }
-        drop(lock_hold);
     });
 }
 #[test]
+#[serial]
 fn roundtrip_reference_files_short() {
     let rand_string: String = thread_rng()
         .sample_iter(&Alphanumeric)
@@ -71,7 +63,6 @@ fn roundtrip_reference_files_short() {
     let output_name = "temp_hash_out_short".to_owned() + &rand_string;
     let output_path = PathBuf::from(output_name.clone());
 
-    let lock_hold = LOCK_CWD.lock().unwrap();
     cleanup_after_func!({
         let mut cmd_gen = Command::cargo_bin("merkle_tree_checksum").unwrap();
         let assert_gen = cmd_gen
@@ -99,11 +90,11 @@ fn roundtrip_reference_files_short() {
         if output_path.is_file() {
             remove_file(output_path).unwrap();
         }
-        drop(lock_hold);
     });
 }
 
 #[test]
+#[serial]
 fn gen_compare_files_long() {
     let rand_string: String = thread_rng()
         .sample_iter(&Alphanumeric)
@@ -113,7 +104,6 @@ fn gen_compare_files_long() {
     let output_name = "temp_hash_out".to_owned() + &rand_string;
     let output_path = PathBuf::from(output_name.clone());
 
-    let lock_hold = LOCK_CWD.lock().unwrap();
     cleanup_after_func!({
         set_current_dir("tests/reference_files").unwrap();
         let mut cmd_gen = Command::cargo_bin("merkle_tree_checksum").unwrap();
@@ -141,10 +131,10 @@ fn gen_compare_files_long() {
         if current_dir().unwrap().ends_with("tests/reference_files") {
             set_current_dir("../..").unwrap();
         }
-        drop(lock_hold);
     });
 }
 #[test]
+#[serial]
 fn gen_compare_files_short() {
     let rand_string: String = thread_rng()
         .sample_iter(&Alphanumeric)
@@ -154,7 +144,6 @@ fn gen_compare_files_short() {
     let output_name = "temp_hash_out_short".to_owned() + &rand_string;
     let output_path = PathBuf::from(output_name.clone());
 
-    let lock_hold = LOCK_CWD.lock().unwrap();
     cleanup_after_func!({
         set_current_dir("tests/reference_files").unwrap();
         let mut cmd_gen = Command::cargo_bin("merkle_tree_checksum").unwrap();
@@ -182,6 +171,5 @@ fn gen_compare_files_short() {
         if current_dir().unwrap().ends_with("tests/reference_files") {
             set_current_dir("../..").unwrap();
         }
-        drop(lock_hold);
     });
 }
