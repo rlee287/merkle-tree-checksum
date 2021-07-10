@@ -42,6 +42,12 @@ version = "1.5.4"
 default-features = false
 features = ["std", "perf"]
 
+[dev-dependencies]
+assert_cmd = "1.0.7"
+# Needed to allow imports
+predicates = {version = "2.0.0", default-features = false}
+rand = "0.8.4"
+
 # Hashing is the bottleneck from profiling
 # We don't care about dependency internals when debugging our code
 [profile.dev.package.sha2]
