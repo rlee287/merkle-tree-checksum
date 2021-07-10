@@ -1,4 +1,4 @@
-use merkle_tree::{merkle_block_generator, merkle_hash_file};
+use merkle_tree::{BlockRange, merkle_block_generator, merkle_hash_file};
 
 use sha2::Sha256;
 
@@ -7,6 +7,14 @@ use utils::VecCreationConsumer;
 
 use std::convert::TryInto;
 use std::io::Cursor;
+
+#[test]
+fn test_empty_iter() {
+    let mut block_iter = merkle_block_generator(0, 4, 2).into_iter();
+    let empty_block = block_iter.next().unwrap();
+    assert_eq!(empty_block, BlockRange::new(0, 0, true));
+    assert!(block_iter.next().is_none());
+}
 
 #[test]
 fn test_tree_iter() {
