@@ -49,10 +49,10 @@ fn test_partial_block() {
     let ref_hash_ref = ref_hash.as_slice();
 
     let throwaway_consumer = ThrowawayConsumer::default();
-    let empty_cursor = Cursor::new(b"ab");
+    let data_cursor = Cursor::new(b"ab");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (empty_cursor, 4, 2, throwaway_consumer);
+        (data_cursor, 4, 2, throwaway_consumer);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
@@ -68,14 +68,13 @@ fn test_tree() {
 
     let mut vec_consumer_backing = Vec::new();
     let vec_consumer = VecCreationConsumer::new(&mut vec_consumer_backing);
-    let empty_cursor = Cursor::new(b"abcd1234");
+    let data_cursor = Cursor::new(b"abcd1234");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (empty_cursor, 4, 2, vec_consumer);
+        (data_cursor, 4, 2, vec_consumer);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
 
-    // TODO: check other elements of HashRange too
     assert_eq!(3, vec_consumer_backing.len());
     let ref_leaf0_hashrange = HashRange::new(
         BlockRange::new(0, 0, true),
