@@ -41,10 +41,14 @@ use std::collections::HashMap;
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-enum HashCommand {
-    GenerateHash,
-    VerifyHash
+#[derive(Debug)]
+enum HashCommand<W, R>
+where
+    W: Write+Send+std::fmt::Debug,
+    R: BufRead+Seek+Send+std::fmt::Debug
+{
+    GenerateHash(Option<W>),
+    VerifyHash(Option<R>)
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -55,17 +59,6 @@ enum VerificationError {
     OutOfOrderEntry // TODO: remove this later
 }
 //impl Error for VerificationError {}
-
-// TODO: unify this enum with the HashCommand one
-#[derive(Debug)]
-enum FileHandleWrapper<W, R>
-where
-    W: Write+Send+std::fmt::Debug,
-    R: BufRead+Seek+Send+std::fmt::Debug
-{
-    Writer(Box<W>),
-    Reader(Box<R>)
-}
 
 fn main() {
     let status_code = run();
@@ -160,12 +153,12 @@ fn run() -> i32 {
     }
     let matches = matches_result.unwrap();
 
-    let (cmd_chosen, cmd_matches): (HashCommand, ArgMatches)
+    let (mut cmd_chosen, cmd_matches): (HashCommand<_,_>, ArgMatches)
             = match matches.subcommand() {
         (GENERATE_HASH_CMD_NAME, Some(gencmd_matches)) => 
-                (HashCommand::GenerateHash, gencmd_matches.clone()),
+                (HashCommand::GenerateHash(None), gencmd_matches.clone()),
         (VERIFY_HASH_CMD_NAME, Some(verify_matches)) =>
-                (HashCommand::VerifyHash, verify_matches.clone()),
+                (HashCommand::VerifyHash(None), verify_matches.clone()),
         (_, _) => panic!("Invalid subcommand detected")
     };
 
@@ -174,7 +167,7 @@ fn run() -> i32 {
     let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
             (Result<Vec<PathBuf>, String>, block_t, branch_t, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
-        HashCommand::GenerateHash => {
+        HashCommand::GenerateHash(_) => {
             let file_vec = cmd_matches.values_of("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
@@ -189,7 +182,7 @@ fn run() -> i32 {
                 None
             )
         },
-        HashCommand::VerifyHash => {
+        HashCommand::VerifyHash(_) => {
             let hash_file_str = cmd_matches.value_of("FILE").unwrap();
             let hash_file = match File::open(hash_file_str) {
                 Ok(file) => file,
@@ -434,12 +427,12 @@ fn run() -> i32 {
     let expected_hash_len = hash_enum.hash_len();
 
     if quiet_count < 2 && hash_enum == HashFunctions::crc32
-            && cmd_chosen == HashCommand::GenerateHash {
+            && matches!(cmd_chosen,HashCommand::GenerateHash(_)) {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
 
-    let mut hash_file_handle: FileHandleWrapper<_,_> = match cmd_chosen {
-        HashCommand::GenerateHash => {
+    match cmd_chosen {
+        HashCommand::GenerateHash(_) => {
             let write_file_name = cmd_matches.value_of("output").unwrap();
             let overwrite = cmd_matches.is_present("overwrite");
             let open_result = match overwrite {
@@ -482,9 +475,9 @@ fn run() -> i32 {
             file_handle.flush().unwrap();
 
             debug_assert!(verify_start_pos.is_none());
-            FileHandleWrapper::Writer(Box::new(BufWriter::new(file_handle)))
+            cmd_chosen = HashCommand::GenerateHash(Some(BufWriter::new(file_handle)));
         },
-        HashCommand::VerifyHash => {
+        HashCommand::VerifyHash(_) => {
             let read_file_name = cmd_matches.value_of("FILE").unwrap();
             let mut hash_file = match File::open(read_file_name) {
                 Ok(file) => file,
@@ -495,7 +488,7 @@ fn run() -> i32 {
                 }
             };
             hash_file.seek(SeekFrom::Start(verify_start_pos.unwrap())).unwrap();
-            FileHandleWrapper::Reader(Box::new(BufReader::new(hash_file)))
+            cmd_chosen = HashCommand::VerifyHash(Some(BufReader::new(hash_file)))
         }
     };
 
@@ -582,77 +575,70 @@ fn run() -> i32 {
         for block_hash in rx.into_iter() {
             pb_hash.inc(1);
             if !short_output {
-                match cmd_chosen {
-                    HashCommand::GenerateHash => {
-                        if let FileHandleWrapper::Writer(w) = &mut hash_file_handle {
-                            let expected_block = *block_iter.peek().unwrap();
-                            // {file_index} [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
-                            if block_hash.block_range() == expected_block {
-                                writeln!(w, "{:3} {} {} {}",
-                                    file_index,
-                                    block_hash.block_range(),
-                                    block_hash.byte_range(),
-                                    hex::encode(&block_hash.hash_result())
-                                ).unwrap();
-                                loop {
-                                    let next_block = block_iter.next().unwrap();
-                                    if let Some(stored_hash) = ooo_block_storage.get(&next_block) {
-                                        writeln!(w, "{:3} {} {} {}",
-                                            file_index,
-                                            stored_hash.block_range(),
-                                            stored_hash.byte_range(),
-                                            hex::encode(&stored_hash.hash_result())
-                                        ).unwrap();
-                                    } else {
-                                        break;
-                                    }
+                match &mut cmd_chosen {
+                    HashCommand::GenerateHash(Some(w)) => {
+                        let expected_block = *block_iter.peek().unwrap();
+                        // {file_index} [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
+                        if block_hash.block_range() == expected_block {
+                            writeln!(w, "{:3} {} {} {}",
+                                file_index,
+                                block_hash.block_range(),
+                                block_hash.byte_range(),
+                                hex::encode(&block_hash.hash_result())
+                            ).unwrap();
+                            loop {
+                                let next_block = block_iter.next().unwrap();
+                                if let Some(stored_hash) = ooo_block_storage.get(&next_block) {
+                                    writeln!(w, "{:3} {} {} {}",
+                                        file_index,
+                                        stored_hash.block_range(),
+                                        stored_hash.byte_range(),
+                                        hex::encode(&stored_hash.hash_result())
+                                    ).unwrap();
+                                } else {
+                                    break;
                                 }
-                            } else {
-                                ooo_block_storage.insert(block_hash.block_range(), block_hash).ok_or(()).unwrap_err();
                             }
                         } else {
-                            unreachable!()
+                            ooo_block_storage.insert(block_hash.block_range(), block_hash).ok_or(()).unwrap_err();
                         }
                     }
-                    HashCommand::VerifyHash => {
-                        if let FileHandleWrapper::Reader(r) = &mut hash_file_handle {
-                            let mut line = String::new();
-                            let line_len = r.read_line(&mut line).unwrap();
-                            if line_len == 0 {
-                                abort_hash_loop = Err(VerificationError::UnexpectedEof);
-                                    break;
-                            }
+                    HashCommand::VerifyHash(Some(r)) => {
+                        let mut line = String::new();
+                        let line_len = r.read_line(&mut line).unwrap();
+                        if line_len == 0 {
+                            abort_hash_loop = Err(VerificationError::UnexpectedEof);
+                                break;
+                        }
 
-                            let hash_parts = extract_long_hash_parts(
-                                &line, 2*expected_hash_len);
-                            if let Some((file_id, file_hash_range)) = hash_parts {
-                                if file_id != file_index {
+                        let hash_parts = extract_long_hash_parts(
+                            &line, 2*expected_hash_len);
+                        if let Some((file_id, file_hash_range)) = hash_parts {
+                            if file_id != file_index {
+                                abort_hash_loop = Err(VerificationError::OutOfOrderEntry);
+                                break;
+                            }
+                            match (block_hash.block_range()==file_hash_range.block_range(),
+                                    block_hash.byte_range()==file_hash_range.byte_range(),
+                                    block_hash.hash_result()==file_hash_range.hash_result()) {
+                                (true, true, true) => {/*All good, do nothing*/},
+                                (true, true, false) => {
+                                    let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
+                                    let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
+                                    abort_hash_loop = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), file_hash_box,block_hash_box));
+                                    break;
+                                }
+                                (_, _, _) => {
                                     abort_hash_loop = Err(VerificationError::OutOfOrderEntry);
                                     break;
                                 }
-                                match (block_hash.block_range()==file_hash_range.block_range(),
-                                        block_hash.byte_range()==file_hash_range.byte_range(),
-                                        block_hash.hash_result()==file_hash_range.hash_result()) {
-                                    (true, true, true) => {/*All good, do nothing*/},
-                                    (true, true, false) => {
-                                        let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
-                                        let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
-                                        abort_hash_loop = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), file_hash_box,block_hash_box));
-                                        break;
-                                    }
-                                    (_, _, _) => {
-                                        abort_hash_loop = Err(VerificationError::OutOfOrderEntry);
-                                        break;
-                                    }
-                                }
-                            } else {
-                                abort_hash_loop = Err(VerificationError::MalformedEntry(line));
-                                break;
                             }
                         } else {
-                            unreachable!()
+                            abort_hash_loop = Err(VerificationError::MalformedEntry(line));
+                            break;
                         }
                     }
+                    _ => unreachable!()
                 }
             }
             thread::yield_now();
@@ -666,7 +652,7 @@ fn run() -> i32 {
             assert_eq!(pb_hash.position(), pb_hash.length());
         }
         assert!(ooo_block_storage.is_empty());
-        if cmd_chosen == HashCommand::GenerateHash && !short_output {
+        if matches!(cmd_chosen, HashCommand::GenerateHash(_)) && !short_output {
             assert_eq!(block_iter.peek(), None);
         }
 
@@ -677,39 +663,32 @@ fn run() -> i32 {
              * This is only possible in long mode when an error occurs
              */
             let final_hash = final_hash_option.unwrap();
-            match cmd_chosen {
-                HashCommand::GenerateHash => {
-                    if let FileHandleWrapper::Writer(w) = &mut hash_file_handle {
-                        let escaped_filename = escape_chars(filename_str);
-                        writeln!(w, "{}  {}",
-                            hex::encode(final_hash),
-                            enquote::enquote('"', &escaped_filename)).unwrap();
-                        w.flush().unwrap();
-                    } else {
-                        unreachable!()
-                    }
+            match &mut cmd_chosen {
+                HashCommand::GenerateHash(Some(w)) => {
+                    let escaped_filename = escape_chars(filename_str);
+                    writeln!(w, "{}  {}",
+                        hex::encode(final_hash),
+                        enquote::enquote('"', &escaped_filename)).unwrap();
+                    w.flush().unwrap();
                 },
-                HashCommand::VerifyHash => {
-                    if let FileHandleWrapper::Reader(r) = &mut hash_file_handle {
-                        let mut line = String::new();
-                        r.read_line(&mut line).unwrap();
+                HashCommand::VerifyHash(Some(r)) => {
+                    let mut line = String::new();
+                    r.read_line(&mut line).unwrap();
 
-                        let hash_parts = extract_short_hash_parts(&line, 2*expected_hash_len);
-                        if let Some((file_hash_box, quoted_name)) = hash_parts {
-                            assert_eq!(filename_str,
-                                enquote::unquote(&quoted_name).unwrap());
-                            if final_hash == file_hash_box {
-                                abort_hash_loop = Ok(());
-                            } else {
-                                abort_hash_loop = Err(VerificationError::MismatchedHash(None, file_hash_box, final_hash));
-                            }
+                    let hash_parts = extract_short_hash_parts(&line, 2*expected_hash_len);
+                    if let Some((file_hash_box, quoted_name)) = hash_parts {
+                        assert_eq!(filename_str,
+                            enquote::unquote(&quoted_name).unwrap());
+                        if final_hash == file_hash_box {
+                            abort_hash_loop = Ok(());
                         } else {
-                            abort_hash_loop = Err(VerificationError::MalformedEntry(line));
+                            abort_hash_loop = Err(VerificationError::MismatchedHash(None, file_hash_box, final_hash));
                         }
                     } else {
-                        unreachable!()
+                        abort_hash_loop = Err(VerificationError::MalformedEntry(line));
                     }
-                }
+                },
+                _ => unreachable!()
             }
             debug_assert!(!matches!(abort_hash_loop, Err(VerificationError::OutOfOrderEntry)));
         }
@@ -717,12 +696,12 @@ fn run() -> i32 {
             Ok(_) => {
                 if quiet_count < 2 {
                     match cmd_chosen {
-                        HashCommand::GenerateHash => {
+                        HashCommand::GenerateHash(_) => {
                             if quiet_count == 1 {
                                 eprintln!("Done")
                             }
                         },
-                        HashCommand::VerifyHash => {
+                        HashCommand::VerifyHash(_) => {
                             eprintln!("Info: {} hash matches", filename_str)
                         }
                     }
@@ -765,7 +744,7 @@ fn run() -> i32 {
         }
     }
     // Consume hash_file_handle to ensure it isn't used again
-    if let FileHandleWrapper::Reader(mut r) = hash_file_handle {
+    if let HashCommand::VerifyHash(Some(mut r)) = cmd_chosen {
         // Check if at EOF
         let current_pos = r.stream_position().unwrap();
         r.seek(SeekFrom::End(0)).unwrap();
