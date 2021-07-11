@@ -51,6 +51,7 @@ enum VerificationError {
 }
 //impl Error for VerificationError {}
 
+// TODO: unify this enum with the HashCommand one
 #[derive(Debug)]
 enum FileHandleWrapper<W, R>
 where

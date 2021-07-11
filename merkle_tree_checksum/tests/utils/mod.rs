@@ -1,6 +1,7 @@
 use std::io::{Read, Seek, SeekFrom, ErrorKind};
 use std::fs::File;
 
+// TODO: replace with scopeguard crate
 macro_rules! cleanup_after_func {
     ($run:block, $teardown:block) => {
         {
