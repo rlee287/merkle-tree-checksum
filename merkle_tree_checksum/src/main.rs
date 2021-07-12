@@ -31,6 +31,7 @@ use merkle_tree::{branch_t, block_t};
 
 use utils::HashFunctions;
 use utils::MpscConsumer;
+use utils::StoredAndComputed;
 
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle,
@@ -53,19 +54,57 @@ where
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum VerificationError {
-    MismatchedHash(Option<BlockRange>, Box<[u8]>,Box<[u8]>), // Bytes, Stored, Computed
+    MismatchedFileID, // No StoredAndComputed as this would not be helpful
+    MismatchedBlockRange(StoredAndComputed<BlockRange>),
+    MismatchedByteRange(StoredAndComputed<BlockRange>),
+    // Range is byte range, which exists when verifying long hashes
+    MismatchedHash(Option<BlockRange>, StoredAndComputed<Box<[u8]>>),
     MalformedEntry(String), // String is the malformed line
-    UnexpectedEof,
-    OutOfOrderEntry // TODO: remove this later
+    UnexpectedEof
 }
-//impl Error for VerificationError {}
+impl std::fmt::Display for VerificationError {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Will be printed as "Error verifying file {name}: {err}\n"
+        match self {
+            Self::MismatchedFileID => write!(fmt, "found entry for different file"),
+            Self::MismatchedBlockRange(s_c) => {
+                write!(fmt, concat!("mismatched block range in entry:\n",
+                    "  stored:   {}\n",
+                    "  computed: {}"),
+                    s_c.stored(), s_c.computed())
+            }
+            Self::MismatchedByteRange(s_c) => {
+                write!(fmt, concat!("mismatched byte range in entry:\n",
+                    "  stored:   {}\n",
+                    "  computed: {}"),
+                    s_c.stored(), s_c.computed())
+            }
+            Self::MismatchedHash(range_option, s_c) => {
+                match range_option {
+                    Some(range) => write!(fmt,
+                        "hash mismatch over byte range {}:\n", range),
+                    None => write!(fmt, "hash mismatch:\n")
+                }?;
+                write!(fmt, concat!(
+                    "  stored:   {}\n",
+                    "  computed: {}"),
+                    Vec::<u8>::encode_hex::<String>(&s_c.stored().to_vec()),
+                    Vec::<u8>::encode_hex::<String>(&s_c.computed().to_vec()))
+            }
+            Self::MalformedEntry(line) => {
+                write!(fmt, "found malformed entry {}", line)
+            }
+            Self::UnexpectedEof => write!(fmt, "unexpected EOF")
+        }
+    }
+}
+impl std::error::Error for VerificationError {}
 
 fn main() {
     let status_code = run();
     std::process::exit(status_code);
 }
 
-//Result<ArgMatches<'a>, clap::Error>
 fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
@@ -427,8 +466,15 @@ fn run() -> i32 {
     let expected_hash_len = hash_enum.hash_len();
 
     if quiet_count < 2 && hash_enum == HashFunctions::crc32
-            && matches!(cmd_chosen,HashCommand::GenerateHash(_)) {
+            && matches!(cmd_chosen, HashCommand::GenerateHash(_)) {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
+    }
+    if quiet_count < 2 && matches!(cmd_chosen, HashCommand::VerifyHash(_))
+            && !short_output && !cmd_matches.is_present("failfast") {
+        eprintln!(
+            concat!("Warning: Verification of long hashes is always failfast, ",
+                "even when --fail-fast is not specified")
+        );
     }
 
     match cmd_chosen {
@@ -615,23 +661,21 @@ fn run() -> i32 {
                             &line, 2*expected_hash_len);
                         if let Some((file_id, file_hash_range)) = hash_parts {
                             if file_id != file_index {
-                                abort_hash_loop = Err(VerificationError::OutOfOrderEntry);
+                                abort_hash_loop = Err(VerificationError::MismatchedFileID);
                                 break;
                             }
-                            match (block_hash.block_range()==file_hash_range.block_range(),
-                                    block_hash.byte_range()==file_hash_range.byte_range(),
-                                    block_hash.hash_result()==file_hash_range.hash_result()) {
-                                (true, true, true) => {/*All good, do nothing*/},
-                                (true, true, false) => {
-                                    let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
-                                    let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
-                                    abort_hash_loop = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), file_hash_box,block_hash_box));
-                                    break;
-                                }
-                                (_, _, _) => {
-                                    abort_hash_loop = Err(VerificationError::OutOfOrderEntry);
-                                    break;
-                                }
+                            if block_hash.block_range() != file_hash_range.block_range() {
+                                abort_hash_loop = Err(VerificationError::MismatchedBlockRange(StoredAndComputed::new(file_hash_range.block_range(), block_hash.block_range())));
+                                break;
+                            }
+                            if block_hash.byte_range() != file_hash_range.byte_range() {
+                                abort_hash_loop = Err(VerificationError::MismatchedByteRange(StoredAndComputed::new(file_hash_range.byte_range(), block_hash.byte_range())))
+                            }
+                            if block_hash.hash_result() != file_hash_range.hash_result() {
+                                let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
+                                let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
+                                abort_hash_loop = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), StoredAndComputed::new(file_hash_box,block_hash_box)));
+                                break;
                             }
                         } else {
                             abort_hash_loop = Err(VerificationError::MalformedEntry(line));
@@ -682,7 +726,7 @@ fn run() -> i32 {
                         if final_hash == file_hash_box {
                             abort_hash_loop = Ok(());
                         } else {
-                            abort_hash_loop = Err(VerificationError::MismatchedHash(None, file_hash_box, final_hash));
+                            abort_hash_loop = Err(VerificationError::MismatchedHash(None, StoredAndComputed::new(file_hash_box, final_hash)));
                         }
                     } else {
                         abort_hash_loop = Err(VerificationError::MalformedEntry(line));
@@ -690,7 +734,6 @@ fn run() -> i32 {
                 },
                 _ => unreachable!()
             }
-            debug_assert!(!matches!(abort_hash_loop, Err(VerificationError::OutOfOrderEntry)));
         }
         match abort_hash_loop {
             Ok(_) => {
@@ -707,40 +750,24 @@ fn run() -> i32 {
                     }
                 }
             },
-            Err(VerificationError::MismatchedHash(range,stored,computed)) => {
-                let range_str = match range {
-                    Some(r) => {
-                        format!(" over file bytes {}", r)
-                    },
-                    None => "".to_owned()
-                };
-                eprintln!(concat!(
-                    "Error: {} has hash mismatch{}:\n",
-                    "  stored:   {}\n",
-                    "  computed: {}\n"),
-                    filename_str, range_str,
-                    Vec::<u8>::encode_hex::<String>(&stored.into_vec()),
-                    Vec::<u8>::encode_hex::<String>(&computed.into_vec()));
-                if cmd_matches.is_present("failfast") {
+            Err(err) => {
+                eprintln!("Error verifying file {}: {}", filename_str, err);
+                // TODO: error recovery when not using failfast
+                if cmd_matches.is_present("failfast") || !short_output {
                     return 2;
-                } else {
-                    hashing_final_status = 2;
-                    continue;
                 }
-            },
-            Err(VerificationError::MalformedEntry(line)) => {
-                eprintln!("Error: hash file has malformed entry {}", line);
-                return 2;
+                match err {
+                    VerificationError::MismatchedHash(..) => {
+                        if cmd_matches.is_present("failfast") {
+                            return 2;
+                        } else {
+                            hashing_final_status = 2;
+                            continue;
+                        }
+                    }
+                    _ => {return 2;}
+                }
             }
-            Err(VerificationError::UnexpectedEof) => {
-                eprintln!("Error: unexpected EOF in hash file");
-                return 2;
-            }
-            Err(VerificationError::OutOfOrderEntry) => {
-                eprintln!("Error: hash file has unsupported out-of-order entry");
-                return 2;
-            }
-
         }
     }
     // Consume hash_file_handle to ensure it isn't used again

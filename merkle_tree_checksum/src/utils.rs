@@ -13,6 +13,26 @@ use walkdir::WalkDir;
 
 use std::sync::mpsc;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StoredAndComputed<T> {
+    stored: T,
+    computed: T
+}
+impl<T> StoredAndComputed<T> {
+    pub fn new(stored: T, computed: T) -> Self {
+        StoredAndComputed {stored, computed}
+    }
+    #[inline]
+    pub fn stored(&self) -> &T {
+        &self.stored
+    }
+    #[inline]
+    pub fn computed(&self) -> &T {
+        &self.computed
+    }
+}
+impl<T: Copy> Copy for StoredAndComputed<T> {}
+
 arg_enum!{
     #[derive(PartialEq, Eq, Debug, Clone, Copy)]
     #[allow(non_camel_case_types)]
