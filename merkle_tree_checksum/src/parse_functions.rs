@@ -50,7 +50,7 @@ lazy_static! {
          * 4: quoted string for the second branch
          * 5: file length for the second branch
          */
-        let combined_regex = format!("^(?:({0}  {1})|({1} {2})){3}$",
+        let combined_regex = format!("^(?:({0} +{1})|({1} {2})){3}$",
             hash_regex, QUOTED_STR_REGEX, length_regex, NEWLINE_REGEX);
         Regex::new(&combined_regex).unwrap()
     };
@@ -220,7 +220,7 @@ cached!{
          * 1: hexadecimal hash
          * 2: quoted filename
          */
-        let regex_str = format!("^{}  {}{}$",
+        let regex_str = format!("^{} +{}{}$",
             hash_regex, QUOTED_STR_REGEX, NEWLINE_REGEX);
         Arc::new(Regex::new(&regex_str).unwrap())
     }
