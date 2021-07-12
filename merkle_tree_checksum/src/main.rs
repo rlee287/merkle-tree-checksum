@@ -747,8 +747,7 @@ fn run() -> i32 {
     if let HashCommand::VerifyHash(Some(mut r)) = cmd_chosen {
         // Check if at EOF
         let current_pos = r.stream_position().unwrap();
-        r.seek(SeekFrom::End(0)).unwrap();
-        let end_pos = r.stream_position().unwrap();
+        let end_pos = r.seek(SeekFrom::End(0)).unwrap();
         if current_pos != end_pos {
             eprintln!("Error: hash file has extra lines left over");
             return 2;
