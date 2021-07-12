@@ -737,8 +737,7 @@ fn run() -> i32 {
     if let FileHandleWrapper::Reader(mut r) = hash_file_handle {
         // Check if at EOF
         let current_pos = r.stream_position().unwrap();
-        r.seek(SeekFrom::End(0)).unwrap();
-        let end_pos = r.stream_position().unwrap();
+        let end_pos = r.seek(SeekFrom::End(0)).unwrap();
         if current_pos != end_pos {
             eprintln!("Error: hash file has extra lines left over");
             return 2;
