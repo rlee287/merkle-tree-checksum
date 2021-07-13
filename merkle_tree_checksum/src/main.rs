@@ -30,7 +30,6 @@ use merkle_tree::{BlockRange, HashRange};
 use merkle_tree::{branch_t, block_t};
 
 use utils::HashFunctions;
-use utils::MpscConsumer;
 use utils::StoredAndComputed;
 
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
@@ -592,7 +591,6 @@ fn run() -> i32 {
             .unwrap();
 
         let (tx, rx) = mpsc::channel::<HashRange>();
-        let tx_wrap = MpscConsumer::new_async(tx);
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
@@ -607,7 +605,7 @@ fn run() -> i32 {
                 // TODO: use rustversion cfg once this is fixed
                 let pb_wrap = pb_file.wrap_read(file_obj);
                 let result = merkle_tree_thunk(pb_wrap,
-                    block_size, branch_factor, tx_wrap);
+                    block_size, branch_factor, tx);
                 pb_file.finish_at_current_pos();
                 result
             })

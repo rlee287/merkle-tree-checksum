@@ -12,6 +12,8 @@ use regex::Regex;
 
 use lazy_static::lazy_static;
 
+use std::sync::mpsc::{Sender, SyncSender};
+
 #[allow(non_camel_case_types)]
 pub type branch_t = u16;
 #[allow(non_camel_case_types)]
@@ -272,4 +274,21 @@ impl HashRange {
 
 pub trait Consumer<T> {
     fn accept(&mut self, var: T) -> Result<(), T>;
+}
+
+impl<T> Consumer<T> for Sender<T> {
+    fn accept(&mut self, var: T) -> Result<(), T> {
+        match self.send(var) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(e.0)
+        }
+    }
+}
+impl<T> Consumer<T> for SyncSender<T> {
+    fn accept(&mut self, var: T) -> Result<(), T> {
+        match self.send(var) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(e.0)
+        }
+    }
 }
