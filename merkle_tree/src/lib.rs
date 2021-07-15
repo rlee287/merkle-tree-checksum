@@ -237,8 +237,9 @@ where
                     block_size, block_count, slice_range, branch, 
                     hash_queue.clone(), threadpool));
             }
-            // Fill in capacity stuff afterwards
-            let mut hash_input: Vec<u8> = Vec::new();
+            let mut hash_input: Vec<u8> = Vec::with_capacity(
+                <D as Digest>::output_size()*subhash_awaitables.len()+1);
+            hash_input.insert(0, 0x01);
             for mut awaitable in subhash_awaitables {
                 match awaitable.await_() {
                     Ok(subhash) => {
@@ -247,7 +248,8 @@ where
                     },
                     Err(HelperErrSignal::FileEOF) => {
                         // None -> out of range, and so will the rest
-                        // Avoid breaking out to clean up awaitable channels?
+                        // break drops awaitable and rest of subhash_awaitables
+                        break;
                     },
                     Err(HelperErrSignal::ConsumerErr) => {
                         let dummy_err = DummyAwaitable::new(Err(HelperErrSignal::ConsumerErr));
