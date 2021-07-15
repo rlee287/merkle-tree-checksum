@@ -619,6 +619,7 @@ fn run() -> i32 {
         let mut block_iter = merkle_block_generator(file_size, block_size, branch_factor).into_iter().peekable();
         // TODO: a binary heap would be better but I don't know how to impl Ord for BlockRange
         let mut ooo_block_storage = HashMap::<BlockRange, HashRange>::new();
+        // TODO: move reordering stuff into separate utility function
         for block_hash in rx.into_iter() {
             pb_hash.inc(1);
             if !short_output {

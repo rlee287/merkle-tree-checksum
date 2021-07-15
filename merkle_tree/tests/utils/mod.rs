@@ -1,15 +1,15 @@
 use merkle_tree::Consumer;
 
-use std::sync::mpsc::Sender;
+use std::marker::PhantomData;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ThrowawayConsumer<T> {
-    dummy_field: std::marker::PhantomData<T>
+    dummy_field: PhantomData<T>
 }
 impl<T> Default for ThrowawayConsumer<T> {
     fn default() -> Self {
         ThrowawayConsumer {
-            dummy_field: std::marker::PhantomData::default()
+            dummy_field: PhantomData::default()
         }
     }
 }
