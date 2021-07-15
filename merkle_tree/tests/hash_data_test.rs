@@ -45,11 +45,11 @@ fn test_empty_string() {
 
 #[test]
 fn test_partial_block() {
-    let ref_hash = Sha256::digest(b"\x00ab");
+    let ref_hash = Sha256::digest(b"\x00yz");
     let ref_hash_ref = ref_hash.as_slice();
 
     let throwaway_consumer = ThrowawayConsumer::default();
-    let data_cursor = Cursor::new(b"ab");
+    let data_cursor = Cursor::new(b"yz");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
         (data_cursor, 4, 2, throwaway_consumer);
