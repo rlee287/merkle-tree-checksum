@@ -1,5 +1,7 @@
 use merkle_tree::Consumer;
 
+use std::sync::mpsc::Sender;
+
 #[derive(Debug, Copy, Clone)]
 pub struct ThrowawayConsumer<T> {
     dummy_field: std::marker::PhantomData<T>
@@ -12,13 +14,12 @@ impl<T> Default for ThrowawayConsumer<T> {
     }
 }
 impl<T> Consumer<T> for ThrowawayConsumer<T> {
-    fn accept(&mut self, _val: T) -> Result<(), T> {
+    fn accept(&self, _val: T) -> Result<(), T> {
         // Throw away the value
         Ok(())
     }
 }
-
-#[derive(Debug)]
+/*#[derive(Debug)]
 pub struct VecCreationConsumer<'a, T> {
     element_vec: &'a mut Vec<T>
 }
@@ -30,8 +31,8 @@ impl<'a, T> VecCreationConsumer<'a, T> {
     }
 }
 impl<'a, T> Consumer<T> for VecCreationConsumer<'a, T> {
-    fn accept(&mut self, val: T) -> Result<(), T> {
+    fn accept(&self, val: T) -> Result<(), T> {
         self.element_vec.push(val);
-        Ok(())
-    }
-}
+         Ok(())
+     }
+}*/

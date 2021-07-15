@@ -6,6 +6,8 @@ use sha2::Sha256;
 
 use std::str::FromStr;
 
+use std::sync::mpsc::channel;
+
 mod utils;
 use utils::*;
 
@@ -38,7 +40,7 @@ fn test_empty_string() {
     let empty_cursor = Cursor::new(b"");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (empty_cursor, 4, 2, throwaway_consumer);
+        (empty_cursor, 4, 2, throwaway_consumer, false);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
@@ -52,7 +54,7 @@ fn test_partial_block() {
     let data_cursor = Cursor::new(b"ab");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, throwaway_consumer);
+        (data_cursor, 4, 2, throwaway_consumer, false);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
@@ -66,15 +68,16 @@ fn test_tree() {
         ref_leaf1_hash.as_slice()].concat();
     let ref_tree_hash = Sha256::digest(ref_tree_in.as_slice());
 
-    let mut vec_consumer_backing = Vec::new();
-    let vec_consumer = VecCreationConsumer::new(&mut vec_consumer_backing);
+    //let mut vec_consumer_backing = Vec::new();
+    //let vec_consumer = VecCreationConsumer::new(&mut vec_consumer_backing);
+    let (tx, rx) = channel();
     let data_cursor = Cursor::new(b"abcd1234");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, vec_consumer);
+        (data_cursor, 4, 2, tx, false);
     let tree_hash_box = tree_hash.unwrap();
-    assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
 
+    let vec_consumer_backing: Vec<_> = rx.into_iter().collect();
     assert_eq!(3, vec_consumer_backing.len());
     let ref_leaf0_hashrange = HashRange::new(
         BlockRange::new(0, 0, true),
@@ -94,4 +97,6 @@ fn test_tree() {
     assert_eq!(ref_leaf0_hashrange, vec_consumer_backing[0]);
     assert_eq!(ref_leaf1_hashrange, vec_consumer_backing[1]);
     assert_eq!(ref_tree_hashrange, vec_consumer_backing[2]);
+
+    assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
 }

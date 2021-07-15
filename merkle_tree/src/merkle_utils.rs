@@ -273,11 +273,11 @@ impl HashRange {
 }
 
 pub trait Consumer<T> {
-    fn accept(&mut self, var: T) -> Result<(), T>;
+    fn accept(&self, var: T) -> Result<(), T>;
 }
 
 impl<T> Consumer<T> for Sender<T> {
-    fn accept(&mut self, var: T) -> Result<(), T> {
+    fn accept(&self, var: T) -> Result<(), T> {
         match self.send(var) {
             Ok(()) => Ok(()),
             Err(e) => Err(e.0)
@@ -285,10 +285,34 @@ impl<T> Consumer<T> for Sender<T> {
     }
 }
 impl<T> Consumer<T> for SyncSender<T> {
-    fn accept(&mut self, var: T) -> Result<(), T> {
+    fn accept(&self, var: T) -> Result<(), T> {
         match self.send(var) {
             Ok(()) => Ok(()),
             Err(e) => Err(e.0)
         }
     }
 }
+
+/*#[derive(Debug)]
+pub(crate) enum AwaitableUnion<U> {
+    Dummy(DummyAwaitable<U>),
+    Recv(RecvAwaitable<U>),
+}
+impl<T> From<DummyAwaitable<T>> for AwaitableUnion<T> {
+    fn from(dummy: DummyAwaitable<T>) -> Self {
+        Self::Dummy(dummy)
+    }
+}
+impl<T> From<RecvAwaitable<T>> for AwaitableUnion<T> {
+    fn from(recv: RecvAwaitable<T>) -> Self {
+        Self::Recv(recv)
+    }
+}
+impl<T> Awaitable<T> for AwaitableUnion<T> {
+    fn await_(self) -> T {
+        match self {
+            Self::Dummy(a) => a.await_(),
+            Self::Recv(a) => a.await_()
+        }
+    }
+}*/
