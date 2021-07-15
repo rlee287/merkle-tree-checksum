@@ -445,6 +445,9 @@ fn run() -> i32 {
 
     let quiet_count = matches.occurrences_of("quiet");
 
+    // TODO: plug with CLI argument
+    let multithread = false;
+
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
         HashFunctions::crc32 =>
@@ -605,7 +608,7 @@ fn run() -> i32 {
                 // TODO: use rustversion cfg once this is fixed
                 let pb_wrap = pb_file.wrap_read(file_obj);
                 let result = merkle_tree_thunk(pb_wrap,
-                    block_size, branch_factor, tx);
+                    block_size, branch_factor, tx, multithread);
                 pb_file.finish_at_current_pos();
                 result
             })
