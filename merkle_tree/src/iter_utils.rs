@@ -69,6 +69,7 @@ where
     U: Iterator<Item = HashRange>
 {
     Gen::new(|state| async move {
+        // TODO: a binary heap would be better but I don't know how to impl Ord for BlockRange;
         let mut ooo_block_storage = HashMap::<BlockRange, HashRange>::new();
         for expected_block in ref_ordered_iter {
             let mut yielded_element = false;
