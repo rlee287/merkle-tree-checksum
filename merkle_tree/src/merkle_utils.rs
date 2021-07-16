@@ -292,27 +292,3 @@ impl<T> Consumer<T> for SyncSender<T> {
         }
     }
 }
-
-/*#[derive(Debug)]
-pub(crate) enum AwaitableUnion<U> {
-    Dummy(DummyAwaitable<U>),
-    Recv(RecvAwaitable<U>),
-}
-impl<T> From<DummyAwaitable<T>> for AwaitableUnion<T> {
-    fn from(dummy: DummyAwaitable<T>) -> Self {
-        Self::Dummy(dummy)
-    }
-}
-impl<T> From<RecvAwaitable<T>> for AwaitableUnion<T> {
-    fn from(recv: RecvAwaitable<T>) -> Self {
-        Self::Recv(recv)
-    }
-}
-impl<T> Awaitable<T> for AwaitableUnion<T> {
-    fn await_(self) -> T {
-        match self {
-            Self::Dummy(a) => a.await_(),
-            Self::Recv(a) => a.await_()
-        }
-    }
-}*/

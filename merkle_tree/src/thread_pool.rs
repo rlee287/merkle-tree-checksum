@@ -20,20 +20,6 @@ impl<T, A: Awaitable<T>> Awaitable<T> for Box<A> {
     }
 }
 
-/*pub(crate) struct BoxedAwaitable<T> {
-    inner: Box<dyn Awaitable<T>>
-}
-impl<T> BoxedAwaitable<T> {
-    pub fn new(inner: Box<dyn Awaitable<T>>) -> BoxedAwaitable<T>{
-        BoxedAwaitable {inner}
-    }
-}
-impl<T> Awaitable<T> for BoxedAwaitable<T> {
-    fn await_(self) -> T {
-        (*self.inner).await_()
-    }
-}*/
-
 // A dummy awaitable that is immediately ready
 #[derive(Debug, Clone)]
 pub(crate) struct DummyAwaitable<T> {
