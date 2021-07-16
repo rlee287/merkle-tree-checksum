@@ -1,6 +1,8 @@
 use merkle_tree::{BlockRange, HashRange, merkle_hash_file};
+use merkle_tree::{merkle_block_generator, reorder_hashrange_iter};
 
 use std::io::Cursor;
+use std::convert::TryInto;
 use digest::Digest;
 use sha2::Sha256;
 
@@ -74,17 +76,26 @@ fn test_tree_helper(multithread: bool) {
         ref_leaf1_hash.as_slice()].concat();
     let ref_tree_hash = Sha256::digest(ref_tree_in.as_slice());
 
-    //let mut vec_consumer_backing = Vec::new();
-    //let vec_consumer = VecCreationConsumer::new(&mut vec_consumer_backing);
     let (tx, rx) = channel();
-    let data_cursor = Cursor::new(b"abcd1234");
+    let data = b"abcd1234";
+    let data_len: u64 = data.len().try_into().unwrap();
+    let data_cursor = Cursor::new(data);
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
         (data_cursor, 4, 2, tx, multithread);
     let tree_hash_box = tree_hash.unwrap();
 
-    let vec_consumer_backing: Vec<_> = rx.into_iter().collect();
-    assert_eq!(3, vec_consumer_backing.len());
+    let rx_iter = rx.into_iter();
+    // If not multithread, then should be in order
+    // Assume this to make troubleshooting failing tests easier
+    let rx_vec: Vec<_> = match multithread {
+        true => reorder_hashrange_iter(
+                merkle_block_generator(data_len, 4, 2).into_iter(),
+                rx_iter
+            ).into_iter().collect(),
+        false => rx_iter.collect()
+        };
+    assert_eq!(3, rx_vec.len());
     let ref_leaf0_hashrange = HashRange::new(
         BlockRange::new(0, 0, true),
         BlockRange::new(0, 3, true),
@@ -100,9 +111,9 @@ fn test_tree_helper(multithread: bool) {
         BlockRange::new(0, 7, true),
         ref_tree_hash.to_vec().into_boxed_slice()
     );
-    assert_eq!(ref_leaf0_hashrange, vec_consumer_backing[0]);
-    assert_eq!(ref_leaf1_hashrange, vec_consumer_backing[1]);
-    assert_eq!(ref_tree_hashrange, vec_consumer_backing[2]);
+    assert_eq!(ref_leaf0_hashrange, rx_vec[0]);
+    assert_eq!(ref_leaf1_hashrange, rx_vec[1]);
+    assert_eq!(ref_tree_hashrange, rx_vec[2]);
 
     assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
 }
