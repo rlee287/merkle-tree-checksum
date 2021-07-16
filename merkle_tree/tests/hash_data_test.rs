@@ -45,8 +45,7 @@ fn test_empty_string() {
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
 
-#[test]
-fn test_partial_block() {
+fn test_partial_block_helper(multithread: bool) {
     let ref_hash = Sha256::digest(b"\x00yz");
     let ref_hash_ref = ref_hash.as_slice();
 
@@ -54,13 +53,20 @@ fn test_partial_block() {
     let data_cursor = Cursor::new(b"yz");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, throwaway_consumer, false);
+        (data_cursor, 4, 2, throwaway_consumer, multithread);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
-
 #[test]
-fn test_tree() {
+fn test_partial_block() {
+    test_partial_block_helper(false);
+}
+#[test]
+fn test_partial_block_threaded() {
+    test_partial_block_helper(true);
+}
+
+fn test_tree_helper(multithread: bool) {
     let ref_leaf0_hash = Sha256::digest(b"\x00abcd");
     let ref_leaf1_hash = Sha256::digest(b"\x001234");
     let ref_tree_in = [b"\x01",
@@ -74,7 +80,7 @@ fn test_tree() {
     let data_cursor = Cursor::new(b"abcd1234");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, tx, false);
+        (data_cursor, 4, 2, tx, multithread);
     let tree_hash_box = tree_hash.unwrap();
 
     let vec_consumer_backing: Vec<_> = rx.into_iter().collect();
@@ -99,4 +105,12 @@ fn test_tree() {
     assert_eq!(ref_tree_hashrange, vec_consumer_backing[2]);
 
     assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
+}
+#[test]
+fn test_tree() {
+    test_tree_helper(false);
+}
+#[test]
+fn test_tree_threaded() {
+    test_tree_helper(true);
 }
