@@ -28,6 +28,7 @@ use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use merkle_tree::{merkle_hash_file, merkle_block_generator};
 use merkle_tree::{BlockRange, HashRange};
 use merkle_tree::{branch_t, block_t};
+use merkle_tree::reorder_hashrange_iter;
 
 use utils::HashFunctions;
 use utils::StoredAndComputed;
@@ -35,8 +36,6 @@ use utils::StoredAndComputed;
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle,
     ProgressDrawTarget, MultiProgress};
-
-use std::collections::HashMap;
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
@@ -173,6 +172,9 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             .help("Print less text")
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
+        // TODO: specify thread count?
+        .arg(Arg::with_name("jobs").long("jobs").short("j")
+            .help("Use a thread pool for hashing"))
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
     clap_app.get_matches_safe()
@@ -445,8 +447,7 @@ fn run() -> i32 {
 
     let quiet_count = matches.occurrences_of("quiet");
 
-    // TODO: plug with CLI argument
-    let multithread = false;
+    let multithread = matches.is_present("jobs");
 
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
@@ -616,40 +617,18 @@ fn run() -> i32 {
 
         let mut abort_hash_loop: Result<(), VerificationError> = Ok(());
 
-        let mut block_iter = merkle_block_generator(file_size, block_size, branch_factor).into_iter().peekable();
-        // TODO: a binary heap would be better but I don't know how to impl Ord for BlockRange
-        let mut ooo_block_storage = HashMap::<BlockRange, HashRange>::new();
-        // TODO: move reordering stuff into separate utility function
-        for block_hash in rx.into_iter() {
+        let block_iter = merkle_block_generator(file_size, block_size, branch_factor).into_iter();
+        for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
             pb_hash.inc(1);
             if !short_output {
                 match &mut cmd_chosen {
                     HashCommand::GenerateHash(Some(w)) => {
-                        let expected_block = *block_iter.peek().unwrap();
-                        // {file_index} [{tree_block_start}-{tree_block_end}] [{file_block_start}-{file_block_end}] {hash}
-                        if block_hash.block_range() == expected_block {
-                            writeln!(w, "{:3} {} {} {}",
-                                file_index,
-                                block_hash.block_range(),
-                                block_hash.byte_range(),
-                                hex::encode(&block_hash.hash_result())
-                            ).unwrap();
-                            loop {
-                                let next_block = block_iter.next().unwrap();
-                                if let Some(stored_hash) = ooo_block_storage.get(&next_block) {
-                                    writeln!(w, "{:3} {} {} {}",
-                                        file_index,
-                                        stored_hash.block_range(),
-                                        stored_hash.byte_range(),
-                                        hex::encode(&stored_hash.hash_result())
-                                    ).unwrap();
-                                } else {
-                                    break;
-                                }
-                            }
-                        } else {
-                            ooo_block_storage.insert(block_hash.block_range(), block_hash).ok_or(()).unwrap_err();
-                        }
+                        writeln!(w, "{:3} {} {} {}",
+                            file_index,
+                            block_hash.block_range(),
+                            block_hash.byte_range(),
+                            hex::encode(&block_hash.hash_result())
+                        ).unwrap();
                     }
                     HashCommand::VerifyHash(Some(r)) => {
                         let mut line = String::new();
@@ -696,10 +675,6 @@ fn run() -> i32 {
 
         if quiet_count == 0 && abort_hash_loop.is_ok() {
             assert_eq!(pb_hash.position(), pb_hash.length());
-        }
-        assert!(ooo_block_storage.is_empty());
-        if matches!(cmd_chosen, HashCommand::GenerateHash(_)) && !short_output {
-            assert_eq!(block_iter.peek(), None);
         }
 
         if short_output {
