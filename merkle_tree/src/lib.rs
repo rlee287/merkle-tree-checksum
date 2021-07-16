@@ -44,7 +44,7 @@ impl EvaluatorUnion {
 impl PoolEvaluator for EvaluatorUnion {
     fn compute<T, F>(&self, func: F) -> Box<dyn Awaitable<T>>
     where
-        T: 'static + Send,
+        T: 'static + Send + std::fmt::Debug,
         F: 'static + Send + Fn() -> T
     {
         match self {

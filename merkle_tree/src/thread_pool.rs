@@ -1,6 +1,12 @@
+#![forbid(unsafe_code)]
+
 use threadpool::ThreadPool;
 
 use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
+use crate::merkle_utils::Consumer;
+
+use std::marker::PhantomData;
+use std::fmt::Debug;
 
 // Like the std Future but do not implement await using poll
 // Remove the mut part?
@@ -45,17 +51,40 @@ impl<T> Awaitable<T> for DummyAwaitable<T> {
 }
 
 #[derive(Debug)]
-pub(crate) struct RecvAwaitable<T> {
+pub struct ConsumeOnce<T, C>
+where
+    T: Debug,
+    C: Consumer<T>
+{
+    phantom_t: PhantomData<T>,
+    sender: C
+}
+impl<T, C: Consumer<T>> ConsumeOnce<T, C>
+where
+    T: Debug,
+    C: Consumer<T>
+{
+    pub fn new(sender: C) -> ConsumeOnce<T, C> {
+        ConsumeOnce{phantom_t: PhantomData::default(), sender}
+    }
+    pub fn send(self, item: T) -> Result<(), T> {
+        self.sender.accept(item)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct RecvAwaitable<T: Debug> {
     recv_channel: Receiver<T>,
     recv_storage: Option<T>
 }
-impl<T> RecvAwaitable<T> {
-    pub fn new() -> (SyncSender<T>, RecvAwaitable<T>) {
+impl<T: Debug> RecvAwaitable<T> {
+    pub fn new() -> (ConsumeOnce<T, SyncSender<T>>, RecvAwaitable<T>) {
         let (tx, rx) = sync_channel(1);
-        (tx, RecvAwaitable{recv_channel: rx, recv_storage: None})
+        let tx_wrap = ConsumeOnce::new(tx);
+        (tx_wrap, RecvAwaitable{recv_channel: rx, recv_storage: None})
     }
 }
-impl<T> Awaitable<T> for RecvAwaitable<T> {
+impl<T: Debug> Awaitable<T> for RecvAwaitable<T> {
     fn await_(&mut self) -> &T {
         if self.recv_storage.is_none() {
             let recv_value = self.recv_channel.recv().unwrap();
@@ -74,7 +103,7 @@ impl<T> Awaitable<T> for RecvAwaitable<T> {
 pub(crate) trait PoolEvaluator {
     fn compute<T, F>(&self, func: F) -> Box<dyn Awaitable<T>>
     where
-        T: 'static + Send,
+        T: 'static + Send + Debug,
         F: Fn() -> T + 'static + Send,
     ;
 }
@@ -111,7 +140,7 @@ impl ThreadPoolEvaluator {
 impl PoolEvaluator for ThreadPoolEvaluator {
     fn compute<T, F> (&self, func: F) -> Box<dyn Awaitable<T>>
     where
-        T: 'static + Send,
+        T: 'static + Send + Debug,
         F: 'static + Send + Fn() -> T
     {
         let (tx, awaitable) = RecvAwaitable::new();
