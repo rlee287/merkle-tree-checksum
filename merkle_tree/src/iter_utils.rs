@@ -1,12 +1,14 @@
 #![forbid(unsafe_code)]
 
-use crate::merkle_utils::{ceil_div, exp_ceil_log, BlockRange};
+use crate::merkle_utils::{ceil_div, exp_ceil_log, BlockRange, HashRange};
 use crate::merkle_utils::{branch_t, block_t};
 
 use num_iter::range_step;
 
 use async_recursion::async_recursion;
 use genawaiter::rc::{Co, Gen};
+
+use std::collections::HashMap;
 
 pub fn merkle_block_generator(file_len: u64, block_size: block_t, branch: branch_t) -> impl IntoIterator<Item = BlockRange> {
     assert!(block_size != 0);
@@ -59,4 +61,34 @@ async fn merkle_block_generator_helper(state: &Co<BlockRange>,
             state.yield_(BlockRange::new(start_block, end_block, true)).await;
         }
     }
+}
+
+pub fn reorder_hashrange_iter<T, U> (ref_ordered_iter: T, mut hashrange_iter: U) -> impl IntoIterator<Item = HashRange>
+where
+    T: Iterator<Item = BlockRange>,
+    U: Iterator<Item = HashRange>
+{
+    Gen::new(|state| async move {
+        let mut ooo_block_storage = HashMap::<BlockRange, HashRange>::new();
+        for expected_block in ref_ordered_iter {
+            let mut yielded_element = false;
+            while !yielded_element {
+                if ooo_block_storage.contains_key(&expected_block) {
+                    let stored_hashrange = ooo_block_storage.remove(&expected_block).unwrap();
+                    yielded_element = true;
+                    state.yield_(stored_hashrange).await;
+                } else {
+                    let next_hashrange = hashrange_iter.next().unwrap();
+                    if next_hashrange.block_range() == expected_block {
+                        yielded_element = true;
+                        state.yield_(next_hashrange).await;
+                    } else {
+                        ooo_block_storage.insert(next_hashrange.block_range(), next_hashrange).ok_or(()).unwrap_err();
+                    }
+                }
+            }
+        }
+        assert!(ooo_block_storage.is_empty());
+        assert!(hashrange_iter.next().is_none());
+    })
 }

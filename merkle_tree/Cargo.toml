@@ -27,6 +27,7 @@ features = ["std"]
 
 [dev-dependencies]
 sha2 = "0.9"
+permutohedron = "0.2"
 
 # We don't care about dependency internals when debugging our code
 [profile.dev.package."*"]
