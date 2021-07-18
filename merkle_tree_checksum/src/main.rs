@@ -174,7 +174,14 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
                 "Specify twice to suppress all output besides errors.")))
         // TODO: specify thread count?
         .arg(Arg::with_name("jobs").long("jobs").short("j")
-            .help("Use a thread pool for hashing"))
+            .takes_value(true).default_value("4")
+            .validator(|input_str| -> Result<(), String> {
+                match input_str.parse::<usize>() {
+                    Ok(_) => Ok(()),
+                    Err(err) => Err(err.to_string())
+                }
+            })
+            .help("Specify to use thread pool for hashing (value is thread count"))
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
     clap_app.get_matches_safe()
@@ -447,7 +454,10 @@ fn run() -> i32 {
 
     let quiet_count = matches.occurrences_of("quiet");
 
-    let multithread = matches.is_present("jobs");
+    let thread_count = match matches.is_present("jobs") {
+        false => 0,
+        true => value_t!(matches, "jobs", usize).unwrap_or_else(|e| e.exit())
+    };
 
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
@@ -609,7 +619,7 @@ fn run() -> i32 {
                 // TODO: use rustversion cfg once this is fixed
                 let pb_wrap = pb_file.wrap_read(file_obj);
                 let result = merkle_tree_thunk(pb_wrap,
-                    block_size, branch_factor, tx, multithread);
+                    block_size, branch_factor, tx, thread_count);
                 pb_file.finish_at_current_pos();
                 result
             })

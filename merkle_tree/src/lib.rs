@@ -20,7 +20,6 @@ pub use iter_utils::*;
 
 use thread_pool::{Awaitable, DummyAwaitable};
 use thread_pool::{PoolEvaluator, DummyEvaluator, ThreadPoolEvaluator};
-extern crate num_cpus;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum HelperErrSignal {
@@ -56,7 +55,7 @@ impl PoolEvaluator for EvaluatorUnion {
 
 pub fn merkle_hash_file<F, D, C>(mut file: F,
         block_size: block_t, branch: branch_t,
-        hash_queue: C, multithread: bool) -> Option<Box<[u8]>>
+        hash_queue: C, thread_count: usize) -> Option<Box<[u8]>>
 where
     F: Read + Seek,
     D: Digest + 'static,
@@ -73,15 +72,9 @@ where
     let effective_block_count = exp_ceil_log(block_count, branch);
     let block_range = BlockRange::new(0, effective_block_count, false);
 
-    let threadpool_obj = match multithread {
-        true => {
-            let thread_count = match num_cpus::get() {
-                1 => 1,
-                n => n-1
-            };
-            EvaluatorUnion::make_threadpool(thread_count)
-        }
-        false => EvaluatorUnion::make_dummy()
+    let threadpool_obj = match thread_count {
+        0 => EvaluatorUnion::make_dummy(),
+        _ => EvaluatorUnion::make_threadpool(thread_count)
     };
     let hash_out_result = merkle_tree_file_helper::<_, D, _>(&mut file,
         block_size, block_count, block_range, branch,

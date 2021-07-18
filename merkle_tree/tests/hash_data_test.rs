@@ -42,12 +42,12 @@ fn test_empty_string() {
     let empty_cursor = Cursor::new(b"");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (empty_cursor, 4, 2, throwaway_consumer, false);
+        (empty_cursor, 4, 2, throwaway_consumer, 0);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
 
-fn test_partial_block_helper(multithread: bool) {
+fn test_partial_block_helper(thread_count: usize) {
     let ref_hash = Sha256::digest(b"\x00yz");
     let ref_hash_ref = ref_hash.as_slice();
 
@@ -55,20 +55,20 @@ fn test_partial_block_helper(multithread: bool) {
     let data_cursor = Cursor::new(b"yz");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, throwaway_consumer, multithread);
+        (data_cursor, 4, 2, throwaway_consumer, thread_count);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
 #[test]
 fn test_partial_block() {
-    test_partial_block_helper(false);
+    test_partial_block_helper(0);
 }
 #[test]
 fn test_partial_block_threaded() {
-    test_partial_block_helper(true);
+    test_partial_block_helper(3);
 }
 
-fn test_tree_helper(multithread: bool) {
+fn test_tree_helper(thread_count: usize) {
     let ref_leaf0_hash = Sha256::digest(b"\x00abcd");
     let ref_leaf1_hash = Sha256::digest(b"\x001234");
     let ref_tree_in = [b"\x01",
@@ -82,18 +82,18 @@ fn test_tree_helper(multithread: bool) {
     let data_cursor = Cursor::new(data);
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, tx, multithread);
+        (data_cursor, 4, 2, tx, thread_count);
     let tree_hash_box = tree_hash.unwrap();
 
     let rx_iter = rx.into_iter();
     // If not multithread, then should be in order
     // Assume this to make troubleshooting failing tests easier
-    let rx_vec: Vec<_> = match multithread {
-        true => reorder_hashrange_iter(
+    let rx_vec: Vec<_> = match thread_count {
+        0 => rx_iter.collect(),
+        _ => reorder_hashrange_iter(
                 merkle_block_generator(data_len, 4, 2).into_iter(),
                 rx_iter
-            ).into_iter().collect(),
-        false => rx_iter.collect()
+            ).into_iter().collect()
         };
     assert_eq!(3, rx_vec.len());
     let ref_leaf0_hashrange = HashRange::new(
@@ -119,9 +119,9 @@ fn test_tree_helper(multithread: bool) {
 }
 #[test]
 fn test_tree() {
-    test_tree_helper(false);
+    test_tree_helper(0);
 }
 #[test]
 fn test_tree_threaded() {
-    test_tree_helper(true);
+    test_tree_helper(3);
 }

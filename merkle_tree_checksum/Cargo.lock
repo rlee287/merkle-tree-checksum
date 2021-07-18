@@ -316,7 +316,6 @@ dependencies = [
  "generic-array",
  "lazy_static",
  "num-iter",
- "num_cpus",
  "regex",
  "threadpool",
 ]

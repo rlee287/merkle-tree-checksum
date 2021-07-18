@@ -17,7 +17,6 @@ lazy_static = "1.4"
 genawaiter = {version = "0.99", default-features = false}
 async-recursion = "0.3"
 
-num_cpus = "1.0"
 threadpool = "1.8"
 
 [dependencies.regex]
