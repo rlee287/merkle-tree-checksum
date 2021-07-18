@@ -173,3 +173,23 @@ fn gen_compare_files_short() {
         }
     });
 }
+
+#[test]
+#[serial]
+fn verify_files_short_bad() {
+    cleanup_after_func!({
+        set_current_dir("tests/reference_files").unwrap();
+        let mut cmd_check = Command::cargo_bin("merkle_tree_checksum").unwrap();
+        let assert_check = cmd_check
+            .args(["verify-hash", "hash_out_short_bad"])
+            .assert();
+        assert_check
+            .failure()
+            .code(2)
+            .stderr(predicate::str::contains("Error"));
+    }, {
+        if current_dir().unwrap().ends_with("tests/reference_files") {
+            set_current_dir("../..").unwrap();
+        }
+    });
+}
