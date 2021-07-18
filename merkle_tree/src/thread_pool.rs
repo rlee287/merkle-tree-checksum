@@ -102,8 +102,10 @@ pub(crate) struct ThreadPoolEvaluator {
     threadpool: ThreadPool
 }
 impl ThreadPoolEvaluator {
-    pub fn new(thread_count: usize) -> ThreadPoolEvaluator {
-        ThreadPoolEvaluator{threadpool: ThreadPool::new(thread_count)}
+    pub fn new(name: String, thread_count: usize) -> ThreadPoolEvaluator {
+        ThreadPoolEvaluator{
+            threadpool: ThreadPool::with_name(name, thread_count)
+        }
     }
 }
 // TODO: Rust 1.53 bug report of misleading error message without T: Send?

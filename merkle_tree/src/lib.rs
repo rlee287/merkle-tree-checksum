@@ -36,8 +36,8 @@ impl EvaluatorUnion {
     fn make_dummy() -> Self {
         Self::Dummy(DummyEvaluator::new())
     }
-    fn make_threadpool(num_threads: usize) -> Self {
-        Self::ThreadPool(ThreadPoolEvaluator::new(num_threads))
+    fn make_threadpool(name: String, num_threads: usize) -> Self {
+        Self::ThreadPool(ThreadPoolEvaluator::new(name, num_threads))
     }
 }
 impl PoolEvaluator for EvaluatorUnion {
@@ -74,7 +74,8 @@ where
 
     let threadpool_obj = match thread_count {
         0 => EvaluatorUnion::make_dummy(),
-        _ => EvaluatorUnion::make_threadpool(thread_count)
+        _ => EvaluatorUnion::make_threadpool(
+            "merkle_tree_threadpool".to_owned(), thread_count)
     };
     let hash_out_result = merkle_tree_file_helper::<_, D, _>(&mut file,
         block_size, block_count, block_range, branch,
