@@ -3,21 +3,15 @@
 use threadpool::ThreadPool;
 
 use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
+use std::sync::{Mutex, Condvar};
 use crate::merkle_utils::Consumer;
 
 use std::marker::PhantomData;
 use std::fmt::Debug;
 
 // Like the std Future but do not implement await using poll
-// Remove the mut part?
 pub(crate) trait Awaitable<T> {
-    fn await_(&mut self) -> &T;
-}
-
-impl<T, A: Awaitable<T>> Awaitable<T> for Box<A> {
-    fn await_(&mut self) -> &T {
-        A::await_(self)
-    }
+    fn await_(self: Box<Self>) -> T;
 }
 
 // A dummy awaitable that is immediately ready
@@ -31,8 +25,8 @@ impl<T> DummyAwaitable<T> {
     }
 }
 impl<T> Awaitable<T> for DummyAwaitable<T> {
-    fn await_(&mut self) -> &T {
-        &self.value
+    fn await_(self: Box<Self>) -> T {
+        self.value
     }
 }
 
@@ -59,29 +53,19 @@ where
 }
 
 #[derive(Debug)]
-pub(crate) struct RecvAwaitable<T: Debug> {
-    recv_channel: Receiver<T>,
-    recv_storage: Option<T>
+pub(crate) struct RecvAwaitable<T> {
+    recv_channel: Receiver<T>
 }
 impl<T: Debug> RecvAwaitable<T> {
     pub fn new() -> (ConsumeOnce<T, SyncSender<T>>, RecvAwaitable<T>) {
         let (tx, rx) = sync_channel(1);
         let tx_wrap = ConsumeOnce::new(tx);
-        (tx_wrap, RecvAwaitable{recv_channel: rx, recv_storage: None})
+        (tx_wrap, RecvAwaitable{recv_channel: rx})
     }
 }
 impl<T: Debug> Awaitable<T> for RecvAwaitable<T> {
-    fn await_(&mut self) -> &T {
-        if self.recv_storage.is_none() {
-            let recv_value = self.recv_channel.recv().unwrap();
-            self.recv_storage = Some(recv_value);
-        }
-        match &self.recv_storage {
-            Some(val) => val,
-            None => {
-                unreachable!()
-            }
-        }
+    fn await_(self: Box<Self>) -> T {
+        self.recv_channel.recv().unwrap()
     }
 }
 // TODO: using mutexes and condvars may have less overhead if I can figure out how to split the read and write halves

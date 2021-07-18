@@ -83,10 +83,9 @@ where
         }
         false => EvaluatorUnion::make_dummy()
     };
-    let mut hash_out_awaitable = merkle_tree_file_helper::<_, D, _>(&mut file,
+    let hash_out_result = merkle_tree_file_helper::<_, D, _>(&mut file,
         block_size, block_count, block_range, branch,
-        hash_queue, &threadpool_obj);
-    let hash_out_result = hash_out_awaitable.await_().as_ref();
+        hash_queue, &threadpool_obj).await_();
     let hash_out = hash_out_result.ok()?;
     debug_assert_eq!(file_len, hash_out.1);
     return Some(hash_out.0.to_vec().into_boxed_slice());
@@ -187,7 +186,7 @@ where
             let mut hash_input: Vec<u8> = Vec::with_capacity(
                 <D as Digest>::output_size()*subhash_awaitables.len()+1);
             hash_input.insert(0, 0x01);
-            for mut awaitable in subhash_awaitables {
+            for awaitable in subhash_awaitables {
                 match awaitable.await_() {
                     Ok(subhash) => {
                         hash_input.extend(subhash.0.clone());
