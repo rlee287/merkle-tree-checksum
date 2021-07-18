@@ -40,6 +40,9 @@ use indicatif::{ProgressBar, ProgressStyle,
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
 
+const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
+    "the SHA2 family and CRC32.");
+
 #[derive(Debug)]
 enum HashCommand<W, R>
 where
@@ -104,17 +107,20 @@ fn main() {
 }
 
 fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
+    let gen_hash_after_help = HELP_STR_HASH_LIST.to_owned()
+        +concat!(" sha512-based hashes ",
+        "(sha384, sha512, sha512trunc224, and sha512trunc256) ",
+        "can be significantly faster than sha256-based hashes ",
+        "(sha224 and sha256) ",
+        "on 64-bit systems that lack SHA hardware acceleration.");
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
-        .after_help(concat!("Note: sha512-based hashes ",
-            "(sha384, sha512, sha512trunc224, and sha512trunc256) ",
-            "can be significantly faster than sha256-based hashes ",
-            "(sha224 and sha256) ",
-            "on 64-bit systems that lack SHA hardware acceleration."))
+        .after_help(&*gen_hash_after_help)
         .arg(Arg::with_name("hash").long("hash-function").short("f")
             .takes_value(true)
             .default_value("sha256").possible_values(&HashFunctions::variants())
+            .hide_possible_values(true)
             .case_insensitive(true)
             .help("Hash function to use"))
         .arg(Arg::with_name("branch").long("branch-factor").short("b")
@@ -164,6 +170,7 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
         .version(crate_version!())
         .author(crate_authors!())
         .about(crate_description!())
+        .after_help(HELP_STR_HASH_LIST)
         .setting(AppSettings::SubcommandRequired)
         .setting(AppSettings::VersionlessSubcommands)
         .setting(AppSettings::UnifiedHelpMessage)
@@ -172,7 +179,6 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             .help("Print less text")
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
-        // TODO: specify thread count?
         .arg(Arg::with_name("jobs").long("jobs").short("j")
             .takes_value(true).default_value("4")
             .validator(|input_str| -> Result<(), String> {
@@ -181,11 +187,13 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
                     Err(err) => Err(err.to_string())
                 }
             })
-            .help("Specify to use thread pool for hashing (value is thread count)")
+            .help("Specify size of thread pool for hashing (set to 0 to disable)")
             .long_help(concat!(
-                "Specifying 0 threads disables the thread pool. ",
+                "Specify size of thread pool for hashing. ",
                 "It is recommended to leave at least one CPU free ",
-                "for the main thread to read/write hashes"
+                "for the main thread to read/write hashes. ",
+                "Adding more than 2 threads does not improve performance ",
+                "when I/O is the program bottleneck."
             )))
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
@@ -459,10 +467,8 @@ fn run() -> i32 {
 
     let quiet_count = matches.occurrences_of("quiet");
 
-    let thread_count = match matches.is_present("jobs") {
-        false => 0,
-        true => value_t!(matches, "jobs", usize).unwrap_or_else(|e| e.exit())
-    };
+    let thread_count = value_t!(matches, "jobs", usize)
+        .unwrap_or_else(|e| e.exit());
 
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
