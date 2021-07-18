@@ -181,7 +181,12 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
                     Err(err) => Err(err.to_string())
                 }
             })
-            .help("Specify to use thread pool for hashing (value is thread count"))
+            .help("Specify to use thread pool for hashing (value is thread count)")
+            .long_help(concat!(
+                "Specifying 0 threads disables the thread pool. ",
+                "It is recommended to leave at least one CPU free ",
+                "for the main thread to read/write hashes"
+            )))
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
     clap_app.get_matches_safe()
