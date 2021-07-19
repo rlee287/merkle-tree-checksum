@@ -38,6 +38,7 @@ use utils::StoredAndComputed;
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle,
     ProgressDrawTarget, MultiProgress};
+use git_version::git_version;
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
@@ -116,6 +117,9 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
         "can be significantly faster than sha256-based hashes ",
         "(sha224 and sha256) ",
         "on 64-bit systems that lack SHA hardware acceleration.");
+    let version_str = format!("{} ({})", crate_version!(),
+            git_version!(prefix = "git:", fallback = "unknown"));
+
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
         .setting(AppSettings::UnifiedHelpMessage)
@@ -170,7 +174,7 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             .help("File containing the hashes to check"));
 
     let clap_app = App::new(crate_name!())
-        .version(crate_version!())
+        .version(&*version_str)
         .author(crate_authors!())
         .about(crate_description!())
         .after_help(HELP_STR_HASH_LIST)
