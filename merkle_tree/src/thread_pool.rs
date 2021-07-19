@@ -56,12 +56,9 @@ where
 pub(crate) struct RecvAwaitable<T> {
     recv_channel: Receiver<T>
 }
-impl<T: Debug> RecvAwaitable<T> {
-    pub fn new() -> (ConsumeOnce<T, SyncSender<T>>, RecvAwaitable<T>) {
-        let (tx, rx) = sync_channel(1);
-        let tx_wrap = ConsumeOnce::new(tx);
-        (tx_wrap, RecvAwaitable{recv_channel: rx})
-    }
+pub(crate) fn new_recv_awaitable<T: Debug>() -> (ConsumeOnce<T, SyncSender<T>>, RecvAwaitable<T>) {
+    let (tx, rx) = sync_channel(1);
+    (ConsumeOnce::new(tx), RecvAwaitable {recv_channel: rx})
 }
 impl<T: Debug> Awaitable<T> for RecvAwaitable<T> {
     fn await_(self: Box<Self>) -> T {
@@ -115,7 +112,7 @@ impl PoolEvaluator for ThreadPoolEvaluator {
         T: 'static + Send + Debug,
         F: 'static + Send + Fn() -> T
     {
-        let (tx, awaitable) = RecvAwaitable::new();
+        let (tx, awaitable) = new_recv_awaitable();
         self.threadpool.execute(move || {
             let computation_result = func();
             tx.send(computation_result).unwrap();
