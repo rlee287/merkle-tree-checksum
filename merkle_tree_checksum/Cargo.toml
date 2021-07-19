@@ -12,11 +12,12 @@ publish = false
 #clap = "~2.33"
 walkdir = "2.3"
 indicatif = "0.16"
-# Do not upgrade to enquote 1.1.0 to avoid transitive syn dependency
-enquote = "~1.0"
+enquote = "1.0"
 semver = "1.0"
 hex = "0.4"
 lazy_static = "1.4"
+# Enabling proc-macro pulls in too many dependencies
+cached = { version = "0.23", default-features = false}
 
 #crc32-digest uses an outdated version of the Digest trait
 digest = "0.9"
@@ -24,11 +25,7 @@ generic-array = "0.14"
 crc32fast = "1.2"
 sha2 = "0.9"
 # = to be extra careful with backwards-compatibility
-merkle_tree = { version = "=0.3.0", path = "../merkle_tree"}
-
-[dependencies.cached]
-version = "0.23"
-default-features = false
+merkle_tree = { version = "=0.4.0", path = "../merkle_tree"}
 
 [dependencies.clap]
 version = "~2.33" # ~ specification from crates.io
@@ -47,6 +44,7 @@ assert_cmd = "1.0"
 # Needed to allow imports
 predicates = {version = "2.0", default-features = false}
 rand = "0.8"
+serial_test = "0.5"
 
 # Hashing is the bottleneck from profiling
 # We don't care about dependency internals when debugging our code

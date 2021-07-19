@@ -1,10 +1,14 @@
 use merkle_tree::{BlockRange, HashRange, merkle_hash_file};
+use merkle_tree::{merkle_block_generator, reorder_hashrange_iter};
 
 use std::io::Cursor;
+use std::convert::TryInto;
 use digest::Digest;
 use sha2::Sha256;
 
 use std::str::FromStr;
+
+use std::sync::mpsc::channel;
 
 mod utils;
 use utils::*;
@@ -38,13 +42,12 @@ fn test_empty_string() {
     let empty_cursor = Cursor::new(b"");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (empty_cursor, 4, 2, throwaway_consumer);
+        (empty_cursor, 4, 2, throwaway_consumer, 0);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
 
-#[test]
-fn test_partial_block() {
+fn test_partial_block_helper(thread_count: usize) {
     let ref_hash = Sha256::digest(b"\x00yz");
     let ref_hash_ref = ref_hash.as_slice();
 
@@ -52,13 +55,20 @@ fn test_partial_block() {
     let data_cursor = Cursor::new(b"yz");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, throwaway_consumer);
+        (data_cursor, 4, 2, throwaway_consumer, thread_count);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
-
 #[test]
-fn test_tree() {
+fn test_partial_block() {
+    test_partial_block_helper(0);
+}
+#[test]
+fn test_partial_block_threaded() {
+    test_partial_block_helper(3);
+}
+
+fn test_tree_helper(thread_count: usize) {
     let ref_leaf0_hash = Sha256::digest(b"\x00abcd");
     let ref_leaf1_hash = Sha256::digest(b"\x001234");
     let ref_tree_in = [b"\x01",
@@ -66,16 +76,26 @@ fn test_tree() {
         ref_leaf1_hash.as_slice()].concat();
     let ref_tree_hash = Sha256::digest(ref_tree_in.as_slice());
 
-    let mut vec_consumer_backing = Vec::new();
-    let vec_consumer = VecCreationConsumer::new(&mut vec_consumer_backing);
-    let data_cursor = Cursor::new(b"abcd1234");
+    let (tx, rx) = channel();
+    let data = b"abcd1234";
+    let data_len: u64 = data.len().try_into().unwrap();
+    let data_cursor = Cursor::new(data);
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, vec_consumer);
+        (data_cursor, 4, 2, tx, thread_count);
     let tree_hash_box = tree_hash.unwrap();
-    assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
 
-    assert_eq!(3, vec_consumer_backing.len());
+    let rx_iter = rx.into_iter();
+    // If not multithread, then should be in order
+    // Assume this to make troubleshooting failing tests easier
+    let rx_vec: Vec<_> = match thread_count {
+        0 => rx_iter.collect(),
+        _ => reorder_hashrange_iter(
+                merkle_block_generator(data_len, 4, 2).into_iter(),
+                rx_iter
+            ).into_iter().collect()
+        };
+    assert_eq!(3, rx_vec.len());
     let ref_leaf0_hashrange = HashRange::new(
         BlockRange::new(0, 0, true),
         BlockRange::new(0, 3, true),
@@ -91,7 +111,17 @@ fn test_tree() {
         BlockRange::new(0, 7, true),
         ref_tree_hash.to_vec().into_boxed_slice()
     );
-    assert_eq!(ref_leaf0_hashrange, vec_consumer_backing[0]);
-    assert_eq!(ref_leaf1_hashrange, vec_consumer_backing[1]);
-    assert_eq!(ref_tree_hashrange, vec_consumer_backing[2]);
+    assert_eq!(ref_leaf0_hashrange, rx_vec[0]);
+    assert_eq!(ref_leaf1_hashrange, rx_vec[1]);
+    assert_eq!(ref_tree_hashrange, rx_vec[2]);
+
+    assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
+}
+#[test]
+fn test_tree() {
+    test_tree_helper(0);
+}
+#[test]
+fn test_tree_threaded() {
+    test_tree_helper(3);
 }

@@ -11,7 +11,25 @@ use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use std::sync::mpsc;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StoredAndComputed<T> {
+    stored: T,
+    computed: T
+}
+impl<T> StoredAndComputed<T> {
+    pub fn new(stored: T, computed: T) -> Self {
+        StoredAndComputed {stored, computed}
+    }
+    #[inline]
+    pub fn stored(&self) -> &T {
+        &self.stored
+    }
+    #[inline]
+    pub fn computed(&self) -> &T {
+        &self.computed
+    }
+}
+impl<T: Copy> Copy for StoredAndComputed<T> {}
 
 arg_enum!{
     #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -142,50 +160,6 @@ pub(crate) fn get_file_list(file_strs: Vec<&str>) -> Result<Vec<PathBuf>,String>
         }
     }
     return Ok(file_list);
-}
-
-// allow(dead_code) for switching between unbouned and bounded channels
-#[derive(Debug, Clone)]
-enum SenderTypes<T> {
-    #[allow(dead_code)]
-    UnboundedSend(mpsc::Sender<T>),
-    #[allow(dead_code)]
-    BoundedSend(mpsc::SyncSender<T>)
-}
-
-#[derive(Debug, Clone)]
-pub struct MpscConsumer<T> {
-    sender: SenderTypes<T>
-}
-
-impl<T> MpscConsumer<T> {
-    #[allow(dead_code)]
-    pub fn new_async(tx: mpsc::Sender<T>) -> MpscConsumer<T> {
-        MpscConsumer::<T> {sender: SenderTypes::UnboundedSend(tx)}
-    }
-    #[allow(dead_code)]
-    pub fn new_sync(tx: mpsc::SyncSender<T>) -> MpscConsumer<T> {
-        MpscConsumer::<T> {sender: SenderTypes::BoundedSend(tx)}
-    }
-}
-
-impl<T> merkle_tree::Consumer<T> for MpscConsumer<T> {
-    fn accept(&mut self, var: T) -> Result<(), T> {
-        match &self.sender {
-            SenderTypes::UnboundedSend(sender) => {
-                match sender.send(var) {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(e.0)
-                }
-            },
-            SenderTypes::BoundedSend(sender) => {
-                match sender.send(var) {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(e.0)
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]

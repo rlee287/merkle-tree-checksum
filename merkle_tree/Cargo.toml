@@ -1,6 +1,6 @@
 [package]
 name = "merkle_tree"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["rlee287 <rlee287@yahoo.com>"]
 edition = "2018"
 publish = false
@@ -12,6 +12,12 @@ digest = "0.9"
 generic-array = "0.14"
 num-iter = "0.1"
 lazy_static = "1.4"
+# The more popular "generator" library has potential unsoundness issues
+# Prefering genawaiter with more documentation and no stack-switch shenanigans
+genawaiter = {version = "0.99", default-features = false}
+async-recursion = "0.3"
+
+threadpool = "1.8"
 
 [dependencies.regex]
 version = "1.5"
@@ -20,6 +26,7 @@ features = ["std"]
 
 [dev-dependencies]
 sha2 = "0.9"
+permutohedron = "0.2"
 
 # We don't care about dependency internals when debugging our code
 [profile.dev.package."*"]
