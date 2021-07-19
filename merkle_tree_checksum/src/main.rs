@@ -24,6 +24,8 @@ use utils::escape_chars;
 
 use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
+use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
+use blake2::{Blake2b, Blake2s};
 
 use merkle_tree::{merkle_hash_file, merkle_block_generator};
 use merkle_tree::{BlockRange, HashRange};
@@ -41,7 +43,7 @@ const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
 
 const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
-    "the SHA2 family and CRC32.");
+    "the SHA2 family, the SHA3 family, Blake2b/Blake2s, and CRC32.");
 
 // TODO: unify this enum with the HashCommand one
 #[derive(Debug)]
@@ -487,6 +489,12 @@ fn run() -> i32 {
             merkle_hash_file::<_,Sha512Trunc224,_>,
         HashFunctions::sha512trunc256 =>
             merkle_hash_file::<_,Sha512Trunc256,_>,
+        HashFunctions::sha3_224 => merkle_hash_file::<_,Sha3_224,_>,
+        HashFunctions::sha3_256 => merkle_hash_file::<_,Sha3_256,_>,
+        HashFunctions::sha3_384 => merkle_hash_file::<_,Sha3_384,_>,
+        HashFunctions::sha3_512 => merkle_hash_file::<_,Sha3_512,_>,
+        HashFunctions::blake2b => merkle_hash_file::<_,Blake2b,_>,
+        HashFunctions::blake2s => merkle_hash_file::<_,Blake2s,_>
     };
     let expected_hash_len = hash_enum.hash_len();
 

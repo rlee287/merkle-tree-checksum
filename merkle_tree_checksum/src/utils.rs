@@ -7,6 +7,8 @@ use std::convert::TryFrom;
 use digest::Digest;
 use crate::crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
+use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
+use blake2::{Blake2b, Blake2s};
 
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -41,7 +43,13 @@ arg_enum!{
         sha384,
         sha512,
         sha512trunc224,
-        sha512trunc256
+        sha512trunc256,
+        sha3_224,
+        sha3_256,
+        sha3_384,
+        sha3_512,
+        blake2b,
+        blake2s
     }
 }
 
@@ -56,7 +64,13 @@ impl HashFunctions {
             HashFunctions::sha384 => Sha384::output_size(),
             HashFunctions::sha512 => Sha512::output_size(),
             HashFunctions::sha512trunc224 => Sha512Trunc224::output_size(),
-            HashFunctions::sha512trunc256 => Sha512Trunc256::output_size()
+            HashFunctions::sha512trunc256 => Sha512Trunc256::output_size(),
+            HashFunctions::sha3_224 => Sha3_224::output_size(),
+            HashFunctions::sha3_256 => Sha3_256::output_size(),
+            HashFunctions::sha3_384 => Sha3_384::output_size(),
+            HashFunctions::sha3_512 => Sha3_512::output_size(),
+            HashFunctions::blake2b => Blake2b::output_size(),
+            HashFunctions::blake2s => Blake2s::output_size()
         }
     }
 }
@@ -75,12 +89,18 @@ impl From<HashFunctions> for u8 {
         match val {
             HashFunctions::crc32 => 0x40,
             // For sha2 family: set bit 0x04 to indicate sha512 base
-            HashFunctions::sha224 => 0x80,
-            HashFunctions::sha256 => 0x81,
-            HashFunctions::sha384 => 0x84,
-            HashFunctions::sha512 => 0x85,
-            HashFunctions::sha512trunc224 => 0x86,
-            HashFunctions::sha512trunc256 => 0x87
+            HashFunctions::sha224 => 0xc0,
+            HashFunctions::sha256 => 0xc1,
+            HashFunctions::sha384 => 0xc4,
+            HashFunctions::sha512 => 0xc5,
+            HashFunctions::sha512trunc224 => 0xc6,
+            HashFunctions::sha512trunc256 => 0xc7,
+            HashFunctions::sha3_224 => 0xc8,
+            HashFunctions::sha3_256 => 0xc9,
+            HashFunctions::sha3_384 => 0xca,
+            HashFunctions::sha3_512 => 0xcb,
+            HashFunctions::blake2b => 0xcc,
+            HashFunctions::blake2s => 0xcd
         }
     }
 }
@@ -89,12 +109,18 @@ impl TryFrom<u8> for HashFunctions {
     fn try_from(val: u8) -> Result<Self, <Self as TryFrom<u8>>::Error> {
         match val {
             0x40 => Ok(HashFunctions::crc32),
-            0x80 => Ok(HashFunctions::sha224),
-            0x81 => Ok(HashFunctions::sha256),
-            0x84 => Ok(HashFunctions::sha384),
-            0x85 => Ok(HashFunctions::sha512),
-            0x86 => Ok(HashFunctions::sha512trunc224),
-            0x87 => Ok(HashFunctions::sha512trunc256),
+            0xc0 => Ok(HashFunctions::sha224),
+            0xc1 => Ok(HashFunctions::sha256),
+            0xc4 => Ok(HashFunctions::sha384),
+            0xc5 => Ok(HashFunctions::sha512),
+            0xc6 => Ok(HashFunctions::sha512trunc224),
+            0xc7 => Ok(HashFunctions::sha512trunc256),
+            0xc8 => Ok(HashFunctions::sha3_224),
+            0xc9 => Ok(HashFunctions::sha3_256),
+            0xca => Ok(HashFunctions::sha3_384),
+            0xcb => Ok(HashFunctions::sha3_512),
+            0xcc => Ok(HashFunctions::blake2b),
+            0xcd => Ok(HashFunctions::blake2s),
             _ => Err(())
         }
     }
@@ -166,22 +192,16 @@ pub(crate) fn get_file_list(file_strs: Vec<&str>) -> Result<Vec<PathBuf>,String>
 mod tests {
     use super::*;
     use std::convert::TryFrom;
+    use std::str::FromStr;
 
     #[test]
     fn enum_u8_roundtrip() {
-        let enum_arr = [
-            HashFunctions::crc32,
-            HashFunctions::sha224,
-            HashFunctions::sha256,
-            HashFunctions::sha384,
-            HashFunctions::sha512,
-            HashFunctions::sha512trunc224,
-            HashFunctions::sha512trunc256
-        ];
-        for enum_variant in enum_arr {
+        let enum_arr = HashFunctions::variants();
+        for enum_variant_name in enum_arr {
+            let enum_variant = HashFunctions::from_str(enum_variant_name).unwrap();
             let enum_as_u8 = u8::from(enum_variant);
-            let u8_enum_roundtrip = HashFunctions::try_from(enum_as_u8).unwrap();
-            assert_eq!(enum_variant, u8_enum_roundtrip);
+            let u8_enum_roundtrip = HashFunctions::try_from(enum_as_u8);
+            assert_eq!(Ok(enum_variant), u8_enum_roundtrip);
         }
     }
 }
