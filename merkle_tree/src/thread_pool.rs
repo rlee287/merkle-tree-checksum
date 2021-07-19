@@ -3,7 +3,6 @@
 use threadpool::ThreadPool;
 
 use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
-use std::sync::{Mutex, Condvar};
 use crate::merkle_utils::Consumer;
 
 use std::marker::PhantomData;
@@ -31,18 +30,12 @@ impl<T> Awaitable<T> for DummyAwaitable<T> {
 }
 
 #[derive(Debug)]
-pub struct ConsumeOnce<T, C>
-where
-    T: Debug,
-    C: Consumer<T>
+pub struct ConsumeOnce<T, C: Consumer<T>>
 {
     phantom_t: PhantomData<T>,
     sender: C
 }
 impl<T, C: Consumer<T>> ConsumeOnce<T, C>
-where
-    T: Debug,
-    C: Consumer<T>
 {
     pub fn new(sender: C) -> ConsumeOnce<T, C> {
         ConsumeOnce{phantom_t: PhantomData::default(), sender}
@@ -56,11 +49,11 @@ where
 pub(crate) struct RecvAwaitable<T> {
     recv_channel: Receiver<T>
 }
-pub(crate) fn new_recv_awaitable<T: Debug>() -> (ConsumeOnce<T, SyncSender<T>>, RecvAwaitable<T>) {
+pub(crate) fn new_recv_awaitable<T>() -> (ConsumeOnce<T, SyncSender<T>>, RecvAwaitable<T>) {
     let (tx, rx) = sync_channel(1);
     (ConsumeOnce::new(tx), RecvAwaitable {recv_channel: rx})
 }
-impl<T: Debug> Awaitable<T> for RecvAwaitable<T> {
+impl<T> Awaitable<T> for RecvAwaitable<T> {
     fn await_(self: Box<Self>) -> T {
         self.recv_channel.recv().unwrap()
     }
