@@ -48,17 +48,3 @@ assert_cmd = "1.0"
 predicates = {version = "2.0", default-features = false}
 rand = "0.8"
 serial_test = "0.5"
-
-# Hashing is the bottleneck from profiling
-# We don't care about dependency internals when debugging our code
-[profile.dev.package.sha2]
-opt-level = 3
-[profile.dev.package.sha3]
-opt-level = 3
-[profile.dev.package.blake2]
-opt-level = 3
-[profile.dev.package.crc32fast]
-opt-level = 3
-
-[profile.release]
-debug = true
