@@ -189,6 +189,8 @@ where
                     Err(HelperErrSignal::FileEOF) => {
                         // None -> out of range, and so will the rest
                         // break drops awaitable and rest of subhash_awaitables
+                        // The rest of the awaitables are DummyAwaitables,
+                        // so dropping them does not hang up a mpsc channel
                         break;
                     },
                     Err(HelperErrSignal::ConsumerErr) => {
