@@ -17,14 +17,14 @@ semver = "1.0"
 hex = "0.4"
 lazy_static = "1.4"
 # Enabling proc-macro pulls in too many dependencies
-cached = { version = "0.23", default-features = false}
+cached = { version = "0.25", default-features = false}
 git-version = "0.3"
 
 #crc32-digest uses an outdated version of the Digest trait
 digest = "0.9"
 generic-array = "0.14"
 crc32fast = "1.2"
-sha2 = "0.9"
+sha2 = { version = "0.9", features = ["asm"] }
 sha3 = "0.9"
 blake2 = "0.9"
 # = to be extra careful with backwards-compatibility
@@ -43,7 +43,7 @@ default-features = false
 features = ["std", "perf"]
 
 [dev-dependencies]
-assert_cmd = "1.0"
+assert_cmd = "2.0"
 # Needed to allow imports
 predicates = {version = "2.0", default-features = false}
 rand = "0.8"
