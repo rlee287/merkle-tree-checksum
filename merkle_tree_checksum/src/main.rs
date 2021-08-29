@@ -235,7 +235,7 @@ fn run() -> i32 {
             (Result<Vec<PathBuf>, String>, block_t, branch_t, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash(_) => {
-            let file_vec = cmd_matches.values_of("FILES").unwrap().collect();
+            let file_vec = cmd_matches.values_of_os("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
                 utils::get_file_list(file_vec),
@@ -250,12 +250,12 @@ fn run() -> i32 {
             )
         },
         HashCommand::VerifyHash(_) => {
-            let hash_file_str = cmd_matches.value_of("FILE").unwrap();
+            let hash_file_str = cmd_matches.value_of_os("FILE").unwrap();
             let hash_file = match File::open(hash_file_str) {
                 Ok(file) => file,
                 Err(e) => {
                     eprintln!("Error opening hash file {}: {}",
-                            hash_file_str, e);
+                            hash_file_str.to_string_lossy(), e);
                     return 1;
                 }
             };

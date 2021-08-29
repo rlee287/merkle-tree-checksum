@@ -10,6 +10,7 @@ use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use blake2::{Blake2b, Blake2s};
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -166,7 +167,7 @@ pub(crate) fn escape_chars(string: &str) -> String {
     }).collect()
 }
 
-pub(crate) fn get_file_list(file_strs: Vec<&str>) -> Result<Vec<PathBuf>,String> {
+pub(crate) fn get_file_list(file_strs: Vec<&OsStr>) -> Result<Vec<PathBuf>,String> {
     let mut file_list = Vec::<PathBuf>::new();
     for file_str in file_strs {
         let file_path = Path::new(&file_str);
@@ -182,7 +183,7 @@ pub(crate) fn get_file_list(file_strs: Vec<&str>) -> Result<Vec<PathBuf>,String>
                 }
             }
         } else {
-            return Err(file_str.to_owned());
+            return Err(file_str.to_string_lossy().to_string());
         }
     }
     return Ok(file_list);
