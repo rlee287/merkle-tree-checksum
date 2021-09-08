@@ -10,7 +10,7 @@ mod utils;
 mod parse_functions;
 
 use std::thread;
-use std::sync::mpsc;
+use crossbeam_channel::unbounded as unbounded_channel;
 
 use std::fs::{File, OpenOptions};
 use hex::ToHex;
@@ -628,7 +628,7 @@ fn run() -> i32 {
             })
             .unwrap();
 
-        let (tx, rx) = mpsc::channel::<HashRange>();
+        let (tx, rx) = unbounded_channel::<HashRange>();
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {

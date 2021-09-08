@@ -13,6 +13,7 @@ use regex::Regex;
 use lazy_static::lazy_static;
 
 use std::sync::mpsc::{Sender, SyncSender};
+use crossbeam_channel::Sender as CrossbeamSender;
 
 #[allow(non_camel_case_types)]
 pub type branch_t = u16;
@@ -289,6 +290,15 @@ impl<T> Consumer<T> for SyncSender<T> {
         match self.send(var) {
             Ok(()) => Ok(()),
             Err(e) => Err(e.0)
+        }
+    }
+}
+
+impl<T> Consumer<T> for CrossbeamSender<T> {
+    fn accept(&self, var: T) -> Result<(), T> {
+        match self.send(var) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(e.into_inner())
         }
     }
 }
