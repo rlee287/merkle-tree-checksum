@@ -8,7 +8,7 @@ use sha2::Sha256;
 
 use std::str::FromStr;
 
-use std::sync::mpsc::channel;
+use crossbeam_channel::unbounded as unbounded_channel;
 
 mod utils;
 use utils::*;
@@ -76,7 +76,7 @@ fn test_tree_helper(thread_count: usize) {
         ref_leaf1_hash.as_slice()].concat();
     let ref_tree_hash = Sha256::digest(ref_tree_in.as_slice());
 
-    let (tx, rx) = channel();
+    let (tx, rx) = unbounded_channel();
     let data = b"abcd1234";
     let data_len: u64 = data.len().try_into().unwrap();
     let data_cursor = Cursor::new(data);

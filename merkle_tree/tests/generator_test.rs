@@ -9,7 +9,7 @@ mod utils;
 use std::convert::TryInto;
 use std::io::Cursor;
 
-use std::sync::mpsc::channel;
+use crossbeam_channel::unbounded as unbounded_channel;
 
 #[test]
 fn test_empty_iter() {
@@ -21,7 +21,7 @@ fn test_empty_iter() {
 
 #[test]
 fn test_tree_iter() {
-    let (tx, rx) = channel();
+    let (tx, rx) = unbounded_channel();
     let data = b"abcd12345";
     let data_len: u64 = data.len().try_into().unwrap();
     let data_cursor = Cursor::new(data);

@@ -12,7 +12,6 @@ use regex::Regex;
 
 use lazy_static::lazy_static;
 
-use std::sync::mpsc::{Sender, SyncSender};
 use crossbeam_channel::Sender as CrossbeamSender;
 
 #[allow(non_camel_case_types)]
@@ -275,23 +274,6 @@ impl HashRange {
 
 pub trait Consumer<T> {
     fn accept(&self, var: T) -> Result<(), T>;
-}
-
-impl<T> Consumer<T> for Sender<T> {
-    fn accept(&self, var: T) -> Result<(), T> {
-        match self.send(var) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(e.0)
-        }
-    }
-}
-impl<T> Consumer<T> for SyncSender<T> {
-    fn accept(&self, var: T) -> Result<(), T> {
-        match self.send(var) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(e.0)
-        }
-    }
 }
 
 impl<T> Consumer<T> for CrossbeamSender<T> {
