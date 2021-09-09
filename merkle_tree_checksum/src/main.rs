@@ -86,9 +86,9 @@ impl std::fmt::Display for VerificationError {
             }
             Self::MismatchedHash(range_option, s_c) => {
                 match range_option {
-                    Some(range) => write!(fmt,
-                        "hash mismatch over byte range {}:\n", range),
-                    None => write!(fmt, "hash mismatch:\n")
+                    Some(range) => writeln!(fmt,
+                        "hash mismatch over byte range {}:", range),
+                    None => writeln!(fmt, "hash mismatch:")
                 }?;
                 write!(fmt, concat!(
                     "  stored:   {}\n",
@@ -733,7 +733,7 @@ fn run() -> i32 {
                     let hash_parts = extract_short_hash_parts(&line, 2*expected_hash_len);
                     if let Some((file_hash_box, quoted_name)) = hash_parts {
                         assert_eq!(filename_str,
-                            enquote::unquote(&quoted_name).unwrap());
+                            enquote::unquote(quoted_name).unwrap());
                         if final_hash == file_hash_box {
                             abort_hash_loop = Ok(());
                         } else {
