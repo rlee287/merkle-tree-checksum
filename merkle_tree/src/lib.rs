@@ -43,7 +43,7 @@ impl EvaluatorUnion {
 impl PoolEvaluator for EvaluatorUnion {
     fn compute<T, F>(&self, func: F) -> Box<dyn Awaitable<T>>
     where
-        T: 'static + Send + std::fmt::Debug,
+        T: 'static + Send,
         F: 'static + Send + Fn() -> T
     {
         match self {
@@ -188,7 +188,7 @@ where
                         // None -> out of range, and so will the rest
                         // break drops awaitable and rest of subhash_awaitables
                         // The rest of the awaitables are DummyAwaitables,
-                        // so dropping them does not hang up a mpsc channel
+                        // so dropping them does not hang up a channel
                         break;
                     },
                     Err(HelperErrSignal::ConsumerErr) => {

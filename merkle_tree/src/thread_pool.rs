@@ -32,12 +32,11 @@ impl<T> Awaitable<T> for OneshotReceiver<T> {
         (*self).recv().unwrap()
     }
 }
-// TODO: using mutexes and condvars may have less overhead if I can figure out how to split the read and write halves
 
 pub(crate) trait PoolEvaluator {
     fn compute<T, F>(&self, func: F) -> Box<dyn Awaitable<T>>
     where
-        T: 'static + Send + Debug,
+        T: 'static + Send,
         F: Fn() -> T + 'static + Send,
     ;
 }
@@ -73,16 +72,18 @@ impl ThreadPoolEvaluator {
     }
 }
 // TODO: Rust 1.53 bug report of misleading error message without T: Send?
+#[allow(unused_must_use)]
 impl PoolEvaluator for ThreadPoolEvaluator {
     fn compute<T, F> (&self, func: F) -> Box<dyn Awaitable<T>>
     where
-        T: 'static + Send + Debug,
+        T: 'static + Send,
         F: 'static + Send + Fn() -> T
     {
         let (tx, awaitable) = oneshot::channel();
         self.threadpool.execute(move || {
             let computation_result = func();
-            tx.send(computation_result).unwrap();
+            // Deliberately ignore error case of other side hanging up
+            tx.send(computation_result);
         });
         Box::new(awaitable)
     }
