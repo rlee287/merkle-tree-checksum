@@ -46,7 +46,6 @@ const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
 const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
     "the SHA2 family, the SHA3 family, Blake2b/Blake2s, and CRC32.");
 
-// TODO: unify this enum with the HashCommand one
 #[derive(Debug)]
 enum HashCommand<W, R>
 where
