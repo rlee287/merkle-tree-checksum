@@ -466,6 +466,7 @@ dependencies = [
  "predicates",
  "rand",
  "regex",
+ "scopeguard",
  "semver",
  "serial_test",
  "sha2",

@@ -1,24 +1,6 @@
 use std::io::{Read, Seek, SeekFrom, ErrorKind};
 use std::fs::File;
 
-// TODO: replace with scopeguard crate
-macro_rules! cleanup_after_func {
-    ($run:block, $teardown:block) => {
-        {
-            use std::panic::{catch_unwind, resume_unwind};
-            let result = catch_unwind(|| $run);
-            $teardown;
-            if let Ok(val) = result {
-                val
-            } else if let Err(panic) = result {
-                resume_unwind(panic)
-            } else {
-                unreachable!();
-            }
-        }
-    };
-}
-
 pub fn file_contents_equal(mut file1: File, mut file2: File) -> bool {
     let file1_metadata = file1.metadata().unwrap();
     let file2_metadata = file2.metadata().unwrap();
