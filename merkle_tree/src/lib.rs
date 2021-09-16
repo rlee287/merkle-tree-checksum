@@ -122,7 +122,7 @@ where
         // TODO: reduce indirection
         if block_interval == 1 {
             let block_size_as_usize: usize = block_size.try_into().unwrap();
-            let mut file_vec: Vec::<u8> = vec![0x00; block_size_as_usize+1];
+            let mut file_vec: Vec::<u8> = vec![0x00; 1];
     
             // Initial size to block_size to read in a full block...
             // 0x00 already prepended before reading in file contents
@@ -133,14 +133,12 @@ where
                 let current_pos_actual = file.stream_position().unwrap();
                 debug_assert_eq!(current_pos_actual, current_pos);
             }
-            let bytes_read = read_into_slice(file, Some(current_pos), &mut file_vec[1..]).unwrap();
-            // ...then shrink the vector to the number of bytes read, if needed
-            if bytes_read < block_size.try_into().unwrap() {
-                // Default is irrelevant as we're shrinking
-                file_vec.resize(bytes_read+1, 0);
-                // Ensure that reading less than requested only occurs when EOF
-                debug_assert_eq!(block_range.start(), block_count-1);
-            }
+
+
+            file_vec.extend(read_exact_vec(file, Some(current_pos),
+                block_size_as_usize).unwrap());
+
+            let bytes_read = file_vec.len()-1;
             current_pos += bytes_read as u64;
             let end_byte_file = current_pos.saturating_sub(1);
             #[cfg(debug_assertions)]
