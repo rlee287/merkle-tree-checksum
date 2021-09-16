@@ -290,3 +290,22 @@ impl<T> Consumer<T> for CrossbeamSender<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_read_exact_full() {
+        let mut read_obj = Cursor::new(b"12345678");
+        let read_result = read_exact_vec(&mut read_obj, Some(0), 4);
+        assert_eq!(read_result.unwrap(), Vec::from(*b"1234"));
+    }
+    #[test]
+    fn test_read_exact_partial() {
+        let mut read_obj = Cursor::new(b"abcde");
+        let read_result = read_exact_vec(&mut read_obj, Some(0), 16);
+        assert_eq!(read_result.unwrap(), Vec::from(*b"abcde"));
+    }
+}
