@@ -186,7 +186,7 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
         .arg(Arg::with_name("jobs").long("jobs").short("j")
-            .takes_value(true).default_value("4")
+            .takes_value(true).default_value("2")
             .validator(|input_str| -> Result<(), String> {
                 match input_str.parse::<usize>() {
                     Ok(_) => Ok(()),
