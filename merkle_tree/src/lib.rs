@@ -183,7 +183,7 @@ where
             for awaitable in subhash_awaitables {
                 match awaitable.await_() {
                     Ok(subhash) => {
-                        hash_input.extend(subhash.0.clone());
+                        hash_input.extend(&subhash.0);
                         current_pos = subhash.1;
                     },
                     Err(HelperErrSignal::FileEOF) => {
