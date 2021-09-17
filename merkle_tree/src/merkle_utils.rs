@@ -69,9 +69,9 @@ pub fn seek_len(seekable: &mut dyn Seek) -> u64 {
 // - File cursor will be at its original position if an error occurs
 // expected_seek_loc provides a way to pass in current location, if available
 // When provided, this saves a seek operation if the given slice was full
-pub(crate) fn read_into_slice<R: Read+Seek>(
-        reader: &mut R, expected_seek_loc: Option<u64>, slice: &mut [u8])
-        -> IOResult<usize> {
+pub(crate) fn read_exact_vec<R: Read+Seek>(
+        reader: &mut R, expected_seek_loc: Option<u64>, len: usize)
+        -> IOResult<Vec<u8>> {
     // stream_position Result from seek, which only fails on negative locations
     let reader_pos_old = match expected_seek_loc {
         Some(given_pos) => {
@@ -85,9 +85,10 @@ pub(crate) fn read_into_slice<R: Read+Seek>(
         }
         None => reader.stream_position().unwrap()
     };
-    let read_exact_result = reader.read_exact(slice);
+    let mut vec_read_buf = vec![0x00; len];
+    let read_exact_result = reader.read_exact(vec_read_buf.as_mut_slice());
     match read_exact_result {
-        Ok(()) => Ok(slice.len()),
+        Ok(()) => Ok(vec_read_buf),
         Err(e) => {
             if e.kind() == ErrorKind::UnexpectedEof {
                 // Read as much as possible
@@ -97,17 +98,22 @@ pub(crate) fn read_into_slice<R: Read+Seek>(
                  * - seek only fails on negative locations
                  */
                 reader.seek(SeekFrom::Start(reader_pos_old)).unwrap();
-                let mut vec_read_buf: Vec<u8> = Vec::new();
+
+                vec_read_buf.clear();
                 let read_len_res = reader.read_to_end(&mut vec_read_buf);
-                if read_len_res.is_err() {
-                    // read_to_end may read nonzero bytes even if error occured
-                    reader.seek(SeekFrom::Start(reader_pos_old)).unwrap();
-                    return read_len_res
+                match read_len_res {
+                    Ok(read_len) => {
+                        debug_assert!(read_len < len);
+                        vec_read_buf.resize(read_len, 0x00);
+                        vec_read_buf.shrink_to_fit();
+                        Ok(vec_read_buf)
+                    }
+                    Err(e) => {
+                        // read_to_end may read nonzero bytes even if error occured
+                        reader.seek(SeekFrom::Start(reader_pos_old)).unwrap();
+                        Err(e)
+                    }
                 }
-                let read_len = read_len_res.unwrap();
-                debug_assert_eq!(read_len, vec_read_buf.len());
-                slice[..read_len].copy_from_slice(&vec_read_buf);
-                Ok(read_len)
             } else {
                 Err(e)
             }
@@ -282,5 +288,24 @@ impl<T> Consumer<T> for CrossbeamSender<T> {
             Ok(()) => Ok(()),
             Err(e) => Err(e.into_inner())
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_read_exact_full() {
+        let mut read_obj = Cursor::new(b"12345678");
+        let read_result = read_exact_vec(&mut read_obj, Some(0), 4);
+        assert_eq!(read_result.unwrap(), Vec::from(*b"1234"));
+    }
+    #[test]
+    fn test_read_exact_partial() {
+        let mut read_obj = Cursor::new(b"abcde");
+        let read_result = read_exact_vec(&mut read_obj, Some(0), 16);
+        assert_eq!(read_result.unwrap(), Vec::from(*b"abcde"));
     }
 }
