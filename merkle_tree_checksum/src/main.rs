@@ -116,8 +116,9 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
         "can be significantly faster than sha256-based hashes ",
         "(sha224 and sha256) ",
         "on 64-bit systems that lack SHA hardware acceleration.");
-    let version_str = format!("{} ({})", crate_version!(),
-            git_version!(prefix = "git:", fallback = "unknown"));
+    let version_str = format!("{} ({}, rustc {})", crate_version!(),
+            git_version!(prefix = "git:", fallback = "unknown"),
+            env!("RUSTC_VERSION_STR"));
 
     let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
