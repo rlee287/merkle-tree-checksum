@@ -17,7 +17,7 @@ semver = "1.0"
 hex = "0.4"
 lazy_static = "1.4"
 # Enabling proc-macro pulls in too many dependencies
-cached = { version = "0.25", default-features = false}
+cached = { version = "0.26", default-features = false}
 crossbeam-channel = "0.5"
 git-version = "0.3"
 
