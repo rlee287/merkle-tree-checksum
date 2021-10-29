@@ -776,14 +776,12 @@ fn run() -> i32 {
                 if cmd_matches.is_present("failfast") || !short_output {
                     return 2;
                 }
+                // Long output and failfast not specified
                 match err {
-                    VerificationError::MismatchedHash(..) => {
-                        if cmd_matches.is_present("failfast") {
-                            return 2;
-                        } else {
-                            hashing_final_status = 2;
-                            continue;
-                        }
+                    VerificationError::MismatchedHash(..)
+                    | VerificationError::MalformedEntry(..) => {
+                        hashing_final_status = 2;
+                        continue;
                     }
                     _ => {return 2;}
                 }
