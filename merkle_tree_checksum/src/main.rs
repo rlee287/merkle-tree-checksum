@@ -46,6 +46,7 @@ const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
 const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
     "the SHA2 family, the SHA3 family, Blake2b/Blake2s, and CRC32.");
 
+// Use Options for inside because we know variant before we have the inside
 #[derive(Debug)]
 enum HashCommand<W, R>
 where
@@ -269,7 +270,7 @@ fn run() -> i32 {
                 eprintln!("Error: unable to read in version line");
                 return 1;
             }
-            match parse_functions::check_version_line(&version_line) {
+            match parse_functions::parse_version_line(&version_line) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
                     let range_str = concat!("~",crate_version!());
@@ -649,7 +650,7 @@ fn run() -> i32 {
             })
             .unwrap();
 
-        let mut abort_hash_loop: Result<(), VerificationError> = Ok(());
+        let mut hash_loop_status: Result<(), VerificationError> = Ok(());
 
         let block_iter = merkle_block_generator(file_size, block_size, branch_factor).into_iter();
         for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
@@ -668,7 +669,7 @@ fn run() -> i32 {
                         let mut line = String::new();
                         let line_len = r.read_line(&mut line).unwrap();
                         if line_len == 0 {
-                            abort_hash_loop = Err(VerificationError::UnexpectedEof);
+                            hash_loop_status = Err(VerificationError::UnexpectedEof);
                                 break;
                         }
 
@@ -676,24 +677,24 @@ fn run() -> i32 {
                             &line, 2*expected_hash_len);
                         if let Some((file_id, file_hash_range)) = hash_parts {
                             if file_id != file_index {
-                                abort_hash_loop = Err(VerificationError::MismatchedFileID);
+                                hash_loop_status = Err(VerificationError::MismatchedFileID);
                                 break;
                             }
                             if block_hash.block_range() != file_hash_range.block_range() {
-                                abort_hash_loop = Err(VerificationError::MismatchedBlockRange(StoredAndComputed::new(file_hash_range.block_range(), block_hash.block_range())));
+                                hash_loop_status = Err(VerificationError::MismatchedBlockRange(StoredAndComputed::new(file_hash_range.block_range(), block_hash.block_range())));
                                 break;
                             }
                             if block_hash.byte_range() != file_hash_range.byte_range() {
-                                abort_hash_loop = Err(VerificationError::MismatchedByteRange(StoredAndComputed::new(file_hash_range.byte_range(), block_hash.byte_range())))
+                                hash_loop_status = Err(VerificationError::MismatchedByteRange(StoredAndComputed::new(file_hash_range.byte_range(), block_hash.byte_range())))
                             }
                             if block_hash.hash_result() != file_hash_range.hash_result() {
                                 let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
                                 let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
-                                abort_hash_loop = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), StoredAndComputed::new(file_hash_box,block_hash_box)));
+                                hash_loop_status = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), StoredAndComputed::new(file_hash_box,block_hash_box)));
                                 break;
                             }
                         } else {
-                            abort_hash_loop = Err(VerificationError::MalformedEntry(line));
+                            hash_loop_status = Err(VerificationError::MalformedEntry(line));
                             break;
                         }
                     }
@@ -707,7 +708,7 @@ fn run() -> i32 {
 
         let final_hash_option = thread_handle.join().unwrap();
 
-        if quiet_count == 0 && abort_hash_loop.is_ok() {
+        if quiet_count == 0 && hash_loop_status.is_ok() {
             assert_eq!(pb_hash.position(), pb_hash.length());
         }
 
@@ -735,18 +736,18 @@ fn run() -> i32 {
                         assert_eq!(filename_str,
                             enquote::unquote(quoted_name).unwrap());
                         if final_hash == file_hash_box {
-                            abort_hash_loop = Ok(());
+                            hash_loop_status = Ok(());
                         } else {
-                            abort_hash_loop = Err(VerificationError::MismatchedHash(None, StoredAndComputed::new(file_hash_box, final_hash)));
+                            hash_loop_status = Err(VerificationError::MismatchedHash(None, StoredAndComputed::new(file_hash_box, final_hash)));
                         }
                     } else {
-                        abort_hash_loop = Err(VerificationError::MalformedEntry(line));
+                        hash_loop_status = Err(VerificationError::MalformedEntry(line));
                     }
                 },
                 _ => unreachable!()
             }
         }
-        match abort_hash_loop {
+        match hash_loop_status {
             Ok(_) => {
                 if quiet_count < 2 {
                     match cmd_chosen {

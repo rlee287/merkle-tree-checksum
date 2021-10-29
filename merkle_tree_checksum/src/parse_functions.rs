@@ -99,7 +99,7 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
     }
 }
 
-// (String, Option<u64>) is (quoted_filename, len_if_present)
+// (String, Option<u64>) is (quoted_filename, file_len_if_present)
 pub(crate) fn extract_quoted_filename(line: &str) -> Option<(String, Option<u64>)> {
     let line_portions = QUOTED_FILENAME_REGEX.captures(line)?;
     debug_assert!(line_portions.len() == 6);
@@ -111,7 +111,7 @@ pub(crate) fn extract_quoted_filename(line: &str) -> Option<(String, Option<u64>
     }
 }
 
-pub(crate) fn check_version_line(version_line: &str)
+pub(crate) fn parse_version_line(version_line: &str)
         -> Result<Version, ParsingErrors> {
     let mut version_str_iter = version_line.split_whitespace();
     let version_obj: Option<Version>;
