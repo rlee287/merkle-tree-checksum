@@ -7,7 +7,7 @@ use serial_test::serial;
 
 #[test]
 #[serial]
-fn verify_files_short_bad() {
+fn verify_files_short_badhash() {
     set_current_dir("tests/reference_files").unwrap();
     let _guard = scopeguard::guard((), |_| {
         if current_dir().unwrap().ends_with("tests/reference_files") {
@@ -16,7 +16,7 @@ fn verify_files_short_bad() {
     });
     let mut cmd_check = Command::cargo_bin("merkle_tree_checksum").unwrap();
     let assert_check = cmd_check
-        .args(["verify-hash", "hash_out_short_bad"])
+        .args(["verify-hash", "hash_out_short_badhash"])
         .assert();
     assert_check
         .failure()
