@@ -1,6 +1,21 @@
 use std::io::{Read, Seek, SeekFrom, ErrorKind};
 use std::fs::File;
 
+use std::path::PathBuf;
+
+use rand::{thread_rng, Rng};
+use rand::distributions::Alphanumeric;
+
+pub fn gen_random_name(prefix: &str) -> PathBuf {
+    let rand_string: String = thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(8)
+        .map(char::from)
+        .collect();
+    let output_name = prefix.to_owned() + &rand_string;
+    PathBuf::from(output_name)
+}
+
 pub fn file_contents_equal(mut file1: File, mut file2: File) -> bool {
     let file1_metadata = file1.metadata().unwrap();
     let file2_metadata = file2.metadata().unwrap();
@@ -10,6 +25,10 @@ pub fn file_contents_equal(mut file1: File, mut file2: File) -> bool {
 
     let mut file1_remainder: Vec<u8> = Vec::new();
     let mut file2_remainder: Vec<u8> = Vec::new();
+
+    file1.seek(SeekFrom::Start(0)).unwrap();
+    file2.seek(SeekFrom::Start(0)).unwrap();
+
     loop {
         let mut file1_block: [u8; 4096] = [0; 4096];
         let file1_seek_pos = file1.stream_position().unwrap();
