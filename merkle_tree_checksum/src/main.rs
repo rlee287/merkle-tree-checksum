@@ -273,7 +273,7 @@ fn run() -> i32 {
             match parse_functions::parse_version_line(&version_line) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
-                    let range_str = concat!("~",crate_version!());
+                    let range_str = concat!("~","0.5");
                     let recognized_range = VersionReq::parse(range_str).unwrap();
                     if !recognized_range.matches(&version) {
                         eprintln!("Error: hash file has unsupported version {}", version);
@@ -516,7 +516,7 @@ fn run() -> i32 {
     }
 
     match cmd_chosen {
-        HashCommand::GenerateHash(_) => {
+        HashCommand::GenerateHash(None) => {
             let write_file_name = cmd_matches.value_of("output").unwrap();
             let overwrite = cmd_matches.is_present("overwrite");
             let open_result = match overwrite {
@@ -561,7 +561,7 @@ fn run() -> i32 {
             debug_assert!(verify_start_pos.is_none());
             cmd_chosen = HashCommand::GenerateHash(Some(BufWriter::new(file_handle)));
         },
-        HashCommand::VerifyHash(_) => {
+        HashCommand::VerifyHash(None) => {
             let read_file_name = cmd_matches.value_of("FILE").unwrap();
             let mut hash_file = match File::open(read_file_name) {
                 Ok(file) => file,
@@ -573,7 +573,8 @@ fn run() -> i32 {
             };
             hash_file.seek(SeekFrom::Start(verify_start_pos.unwrap())).unwrap();
             cmd_chosen = HashCommand::VerifyHash(Some(BufReader::new(hash_file)))
-        }
+        },
+        _ => unreachable!()
     };
 
     for (file_index, file_name) in file_list.iter().enumerate() {
@@ -652,10 +653,16 @@ fn run() -> i32 {
 
         let mut hash_loop_status: Result<(), VerificationError> = Ok(());
 
-        let block_iter = merkle_block_generator(file_size, block_size, branch_factor).into_iter();
-        for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
-            pb_hash.inc(1);
-            if !short_output {
+        if short_output {
+            // Consume sent messages without doing anything with them
+            for _ in rx {
+                pb_hash.inc(1);
+            }
+        } else {
+            let block_iter = merkle_block_generator(
+                file_size, block_size, branch_factor).into_iter();
+            for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
+                pb_hash.inc(1);
                 match &mut cmd_chosen {
                     HashCommand::GenerateHash(Some(w)) => {
                         writeln!(w, "{:3} {} {} {}",
@@ -700,9 +707,10 @@ fn run() -> i32 {
                     }
                     _ => unreachable!()
                 }
+                thread::yield_now();
             }
-            thread::yield_now();
         }
+
         pb_hash.finish_at_current_pos();
         pb_thread_handle.join().unwrap();
 
