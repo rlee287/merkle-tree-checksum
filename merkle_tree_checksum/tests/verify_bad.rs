@@ -21,8 +21,11 @@ fn verify_files_short_badhash() {
     assert_check
         .failure()
         .code(2)
-        // TODO: check for "hash mismatch", and that others are fine
-        .stderr(predicate::str::contains("Error"));
+        // TODO: check that the correct file is bad, and that others are fine
+        .stderr(
+            predicate::str::contains("Error").and(
+                predicate::str::contains("hash mismatch")
+            ));
 }
 
 #[test]
@@ -36,11 +39,13 @@ fn verify_files_short_malformed() {
     });
     let mut cmd_check = Command::cargo_bin("merkle_tree_checksum").unwrap();
     let assert_check = cmd_check
-        .args(["verify-hash", "hash_out_short_badhash"])
+        .args(["verify-hash", "hash_out_short_malformed"])
         .assert();
     assert_check
         .failure()
         .code(2)
-        .stderr(predicate::str::contains("Error"));
-    // TODO: check for "malformed entry", and that others are fine
+        .stderr(predicate::str::contains("Error").and(
+            predicate::str::contains("malformed entry")
+        ));
+    // TODO: check which entry is malformed, and that others are fine
 }
