@@ -14,7 +14,7 @@ use crossbeam_channel::unbounded as unbounded_channel;
 
 use std::fs::{File, OpenOptions};
 use hex::ToHex;
-use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, BufWriter};
+use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
 use parse_functions::{ParsingErrors, size_str_to_num,
@@ -527,7 +527,7 @@ fn run() -> i32 {
                     .create_new(true).open(write_file_name)
             };
             let mut file_handle = match open_result {
-                Ok(file) => file,
+                Ok(file) => LineWriter::new(file),
                 Err(err) => {
                     eprintln!("Error opening file {} for writing: {}",
                         write_file_name, err);
@@ -560,7 +560,7 @@ fn run() -> i32 {
             file_handle.flush().unwrap();
 
             debug_assert!(verify_start_pos.is_none());
-            cmd_chosen = HashCommand::GenerateHash(Some(BufWriter::new(file_handle)));
+            cmd_chosen = HashCommand::GenerateHash(Some(file_handle));
         },
         HashCommand::VerifyHash(None) => {
             let read_file_name = cmd_matches.value_of("FILE").unwrap();
