@@ -235,7 +235,7 @@ fn run() -> i32 {
     let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
             (Result<Vec<PathBuf>, String>, block_t, branch_t, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
-        HashCommand::GenerateHash(_) => {
+        HashCommand::GenerateHash(None) => {
             let file_vec = cmd_matches.values_of_os("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
@@ -250,7 +250,7 @@ fn run() -> i32 {
                 None
             )
         },
-        HashCommand::VerifyHash(_) => {
+        HashCommand::VerifyHash(None) => {
             let hash_file_str = cmd_matches.value_of_os("FILE").unwrap();
             let hash_file = match File::open(hash_file_str) {
                 Ok(file) => file,
@@ -464,7 +464,8 @@ fn run() -> i32 {
                 // We want to ensure that the seek call succeeded
                 Some(hash_file_reader.stream_position().unwrap())
             )
-        }
+        },
+        _ => unreachable!()
     };
     if file_list_result.is_err() {
         eprintln!("Error: file {} does not exist",
