@@ -1,7 +1,6 @@
 mod utils;
 use utils::gen_random_name;
 
-use std::env::{current_dir, set_current_dir};
 use std::fs::remove_file;
 
 use assert_cmd::Command;
