@@ -57,6 +57,27 @@ where
     VerifyHash(Option<R>)
 }
 
+// No Copy to simplify refactoring if non-copy types get added later
+#[derive(PartialEq, Eq, Debug, Clone)]
+enum PreHashError {
+    FileNotFound,
+    MismatchedLength(StoredAndComputed<u64>)
+}
+impl std::fmt::Display for PreHashError {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FileNotFound => write!(fmt, "file not found"),
+            Self::MismatchedLength(s_c) => {
+                write!(fmt, concat!("mismatched file length:\n",
+                    "  expected: {}\n",
+                    "  actual:   {}"),
+                    s_c.stored(), s_c.computed())
+            }
+        }
+    }
+}
+impl std::error::Error for PreHashError {}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum VerificationError {
     MismatchedFileID, // No StoredAndComputed as this would not be helpful
@@ -188,7 +209,7 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
         .arg(Arg::with_name("jobs").long("jobs").short("j")
-            .takes_value(true).default_value("2")
+            .takes_value(true).default_value("4")
             .validator(|input_str| -> Result<(), String> {
                 match input_str.parse::<usize>() {
                     Ok(_) => Ok(()),
@@ -233,13 +254,27 @@ fn run() -> i32 {
     let mut hashing_final_status = 0;
 
     let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
-            (Result<Vec<PathBuf>, String>, block_t, branch_t, bool, HashFunctions, Option<u64>)
+            (Vec<Result<PathBuf, (String, PreHashError)>>, block_t, branch_t, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash(None) => {
-            let file_vec = cmd_matches.values_of_os("FILES").unwrap().collect();
+            let file_vec: Vec<_> = cmd_matches.values_of_os("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
-                utils::get_file_list(file_vec),
+                {
+                    let mut collect_vec: Vec<_> = Vec::with_capacity(
+                        file_vec.len());
+                    for file_path in file_vec {
+                        match utils::str_to_files(file_path) {
+                            Some(paths) => {
+                                for path in paths {
+                                    collect_vec.push(Ok(path));
+                                }
+                            },
+                            None => collect_vec.push(Err((file_path.to_string_lossy().into_owned(), PreHashError::FileNotFound)))
+                        }
+                    };
+                    collect_vec
+                },
                 size_str_to_num(
                     cmd_matches.value_of("blocksize").unwrap()).unwrap(),
                 value_t!(cmd_matches, "branch", branch_t)
@@ -262,7 +297,7 @@ fn run() -> i32 {
             };
             let mut hash_file_reader = BufReader::new(hash_file);
 
-            let mut file_vec : Vec<PathBuf> = Vec::new();
+            let mut file_vec: Vec<Result<PathBuf, (String, PreHashError)>> = Vec::new();
             // Parse version number
             let mut version_line = String::new();
             let version_read_result = hash_file_reader.read_line(&mut version_line);
@@ -382,25 +417,29 @@ fn run() -> i32 {
                             return 1;
                         }
                     };
-                    let path = PathBuf::from(unquoted_name.clone());
-                    if let Some(expected_len) = len_option {
-                        let actual_len = path.metadata().unwrap().len();
-                        if actual_len == expected_len {
-                            file_vec.push(path);
-                        } else {
-                            eprintln!(concat!(
-                                "Error: {} has length mismatch:\n",
-                                "  expected: {}\n",
-                                "  actual:   {}\n"),
-                                unquoted_name, expected_len, actual_len);
-                            if cmd_matches.is_present("failfast") {
-                                return 2;
+                    let path = PathBuf::from(unquoted_name);
+                    if path.is_file() {
+                        if let Some(expected_len) = len_option {
+                            let actual_len = path.metadata().unwrap().len();
+                            if actual_len == expected_len {
+                                file_vec.push(Ok(path));
                             } else {
-                                hashing_final_status = 2;
+                                file_vec.push(Err((
+                                    path.to_string_lossy().into_owned(),
+                                    PreHashError::MismatchedLength(
+                                        StoredAndComputed::new(expected_len, actual_len)
+                                    )))
+                                )
                             }
+                        } else {
+                            file_vec.push(Ok(path))
                         }
                     } else {
-                        file_vec.push(path);
+                        file_vec.push(
+                            Err((
+                                path.to_string_lossy().into_owned(),
+                                PreHashError::FileNotFound))
+                            )
                     }
                 } else if next_line == "Hashes:\n" || next_line == "Hashes:\r\n" {
                     assert!(!is_short_hash);
@@ -420,10 +459,7 @@ fn run() -> i32 {
             }
 
             (
-                match file_vec.iter().find(|path| !path.is_file()) {
-                    Some(i) => Err(i.to_str().unwrap().to_owned()),
-                    None => Ok(file_vec)
-                },
+                file_vec,
                 match block_size_result {
                     Ok(val) => val,
                     Err(e) => {
@@ -467,12 +503,20 @@ fn run() -> i32 {
         },
         _ => unreachable!()
     };
-    if file_list_result.is_err() {
-        eprintln!("Error: file {} does not exist",
-                file_list_result.unwrap_err());
+    let provided_file_len = file_list_result.len();
+    let file_list = file_list_result.into_iter().filter_map(|result| {
+        match result {
+            Ok(p) => Some(p),
+            Err((p_str, err)) => {
+                eprintln!("Error with file {}: {}",
+                    p_str, err);
+                None
+            }
+        }
+    }).collect::<Vec<_>>();
+    if file_list.len() != provided_file_len {
         return 1;
     }
-    let file_list = file_list_result.unwrap();
 
     let quiet_count = matches.occurrences_of("quiet");
 
