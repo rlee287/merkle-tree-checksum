@@ -1,0 +1,8 @@
+merkle_tree_checksum v0.5.1
+Hash function: sha256
+Block size: 4
+Branching factor: 4
+Hashes:
+000007f97f6715ee2af9489d1c854701434542a0b402f6d8dd94deca  "16_byte_file"
+c41e79252eff1112160f8f64be05ba50fced8510cec2449f9bb8b9cf14c0a494  "20_byte_file"
+6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d  "empty_file"
