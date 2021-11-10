@@ -13,6 +13,7 @@ use std::thread;
 use crossbeam_channel::unbounded as unbounded_channel;
 
 use std::fs::{File, OpenOptions};
+use std::ffi::OsString;
 use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
@@ -43,6 +44,8 @@ use git_version::git_version;
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
 
+const EMPTY_STRING: String = String::new();
+
 const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
     "the SHA2 family, the SHA3 family, Blake2b/Blake2s, and CRC32.");
 
@@ -61,6 +64,7 @@ where
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum PreHashError {
     FileNotFound,
+    ReadPermissionError,
     MismatchedLength(StoredAndComputed<u64>)
 }
 impl std::fmt::Display for PreHashError {
@@ -72,7 +76,8 @@ impl std::fmt::Display for PreHashError {
                     "  expected: {}\n",
                     "  actual:   {}"),
                     s_c.stored(), s_c.computed())
-            }
+            },
+            Self::ReadPermissionError => write!(fmt, "permission denied to read")
         }
     }
 }
@@ -254,7 +259,7 @@ fn run() -> i32 {
     let mut hashing_final_status = 0;
 
     let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
-            (Vec<Result<PathBuf, (String, PreHashError)>>, block_t, branch_t, bool, HashFunctions, Option<u64>)
+            (Vec<Result<PathBuf, (OsString, PreHashError)>>, block_t, branch_t, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash(None) => {
             let file_vec: Vec<_> = cmd_matches.values_of_os("FILES").unwrap().collect();
@@ -267,10 +272,13 @@ fn run() -> i32 {
                         match utils::str_to_files(file_path) {
                             Some(paths) => {
                                 for path in paths {
-                                    collect_vec.push(Ok(path));
+                                    match File::open(&path) {
+                                        Ok(_) => collect_vec.push(Ok(path)),
+                                        Err(_) => collect_vec.push(Err((path.into_os_string(), PreHashError::ReadPermissionError)))
+                                    }
                                 }
                             },
-                            None => collect_vec.push(Err((file_path.to_string_lossy().into_owned(), PreHashError::FileNotFound)))
+                            None => collect_vec.push(Err((file_path.to_owned(), PreHashError::FileNotFound)))
                         }
                     };
                     collect_vec
@@ -297,7 +305,7 @@ fn run() -> i32 {
             };
             let mut hash_file_reader = BufReader::new(hash_file);
 
-            let mut file_vec: Vec<Result<PathBuf, (String, PreHashError)>> = Vec::new();
+            let mut file_vec: Vec<Result<PathBuf, (OsString, PreHashError)>> = Vec::new();
             // Parse version number
             let mut version_line = String::new();
             let version_read_result = hash_file_reader.read_line(&mut version_line);
@@ -328,7 +336,7 @@ fn run() -> i32 {
                 }
             }
             // Read in the next three lines
-            let mut hash_param_arr = [String::default(), String::default(), String::default()];
+            let mut hash_param_arr = [EMPTY_STRING; 3];
             for param_str in hash_param_arr.iter_mut() {
                 let mut line = String::new();
                 let line_result = hash_file_reader.read_line(&mut line);
@@ -419,15 +427,21 @@ fn run() -> i32 {
                     };
                     let path = PathBuf::from(unquoted_name);
                     if path.is_file() {
-                        if let Some(expected_len) = len_option {
+                        if File::open(&path).is_err() {
+                            // We already checked file existence
+                            file_vec.push(Err((path.into_os_string(),
+                                PreHashError::ReadPermissionError)))
+                        } else if let Some(expected_len) = len_option {
                             let actual_len = path.metadata().unwrap().len();
                             if actual_len == expected_len {
                                 file_vec.push(Ok(path));
                             } else {
+                                let mismatch_len_obj = StoredAndComputed::new
+                                    (expected_len, actual_len);
                                 file_vec.push(Err((
-                                    path.to_string_lossy().into_owned(),
+                                    path.into_os_string(),
                                     PreHashError::MismatchedLength(
-                                        StoredAndComputed::new(expected_len, actual_len)
+                                        mismatch_len_obj
                                     )))
                                 )
                             }
@@ -437,7 +451,7 @@ fn run() -> i32 {
                     } else {
                         file_vec.push(
                             Err((
-                                path.to_string_lossy().into_owned(),
+                                path.into_os_string(),
                                 PreHashError::FileNotFound))
                             )
                     }
@@ -509,7 +523,7 @@ fn run() -> i32 {
             Ok(p) => Some(p),
             Err((p_str, err)) => {
                 eprintln!("Error with file {}: {}",
-                    p_str, err);
+                    p_str.to_string_lossy(), err);
                 None
             }
         }
