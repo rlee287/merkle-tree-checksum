@@ -587,7 +587,8 @@ fn run() -> i32 {
     if quiet_count < 2 && matches!(cmd_chosen, HashCommand::VerifyHash(_))
             && !short_output && !cmd_matches.is_present("failfast") {
         eprintln!(
-            concat!("Warning: Verification of long hashes is always failfast, ",
+            concat!("Warning: Verification of long hashes may fail early ",
+                "if the hash file is malformed, ",
                 "even when --fail-fast is not specified")
         );
     }
