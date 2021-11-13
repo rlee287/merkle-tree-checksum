@@ -37,20 +37,30 @@ impl<T: Copy> Copy for StoredAndComputed<T> {}
 arg_enum!{
     #[derive(PartialEq, Eq, Debug, Clone, Copy)]
     #[allow(non_camel_case_types)]
+    #[repr(u8)]
+    /*
+     * Encoding choices:
+     * - val & 0x80 = 0x80 if cryptographic, 0 otherwise
+     * - val & 0x40 = 0x40 if recommended for use, 0 otherwise
+     * - val & 0x20 bit reserved as a future bitflag
+     * - val & 0x1f is counter to distinguish individual hashes
+     */
+    // Stability: do not change these values once committed
     pub enum HashFunctions {
-        crc32,
-        sha224,
-        sha256,
-        sha384,
-        sha512,
-        sha512trunc224,
-        sha512trunc256,
-        sha3_224,
-        sha3_256,
-        sha3_384,
-        sha3_512,
-        blake2b,
-        blake2s
+        crc32 = 0x40,
+        // For sha2 family: set bit 0x04 to indicate sha512 base
+        sha224 = 0xc0,
+        sha256 = 0xc1,
+        sha384 = 0xc4,
+        sha512 = 0xc5,
+        sha512trunc224 = 0xc6,
+        sha512trunc256 = 0xc7,
+        sha3_224 = 0xc8,
+        sha3_256 = 0xc9,
+        sha3_384 = 0xca,
+        sha3_512 = 0xcb,
+        blake2b = 0xcc,
+        blake2s = 0xcd
     }
 }
 
@@ -79,30 +89,7 @@ impl HashFunctions {
 impl From<HashFunctions> for u8 {
     #[inline]
     fn from(val: HashFunctions) -> Self {
-        // Stability: do not change these values once committed
-        /*
-         * Encoding choices:
-         * - val & 0x80 = 0x80 if cryptographic, 0 otherwise
-         * - val & 0x40 = 0x40 if recommended for use, 0 otherwise
-         * - val & 0x20 bit reserved as a future bitflag
-         * - val & 0x1f is counter to distinguish individual hashes
-         */
-        match val {
-            HashFunctions::crc32 => 0x40,
-            // For sha2 family: set bit 0x04 to indicate sha512 base
-            HashFunctions::sha224 => 0xc0,
-            HashFunctions::sha256 => 0xc1,
-            HashFunctions::sha384 => 0xc4,
-            HashFunctions::sha512 => 0xc5,
-            HashFunctions::sha512trunc224 => 0xc6,
-            HashFunctions::sha512trunc256 => 0xc7,
-            HashFunctions::sha3_224 => 0xc8,
-            HashFunctions::sha3_256 => 0xc9,
-            HashFunctions::sha3_384 => 0xca,
-            HashFunctions::sha3_512 => 0xcb,
-            HashFunctions::blake2b => 0xcc,
-            HashFunctions::blake2s => 0xcd
-        }
+        val as u8 // Discriminants defined above
     }
 }
 impl TryFrom<u8> for HashFunctions {
