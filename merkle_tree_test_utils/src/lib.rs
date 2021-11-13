@@ -1,5 +1,5 @@
 use std::io::{Read, Seek, SeekFrom, ErrorKind};
-use std::fs::File;
+//use std::fs::File;
 
 use std::path::PathBuf;
 
@@ -55,10 +55,20 @@ pub fn gen_random_name(prefix: &str) -> PathBuf {
     PathBuf::from(output_name)
 }
 
-pub fn file_contents_equal(mut file1: File, mut file2: File) -> bool {
-    let file1_metadata = file1.metadata().unwrap();
-    let file2_metadata = file2.metadata().unwrap();
-    if file1_metadata.len() != file2_metadata.len() {
+pub fn seek_len(seekable: &mut dyn Seek) -> u64 {
+    let old_pos = seekable.stream_position().unwrap();
+    let len = seekable.seek(SeekFrom::End(0)).unwrap();
+    if old_pos != len {
+        seekable.seek(SeekFrom::Start(old_pos)).unwrap();
+    }
+    // return
+    len
+}
+
+pub fn file_contents_equal(mut file1: impl Read+Seek, mut file2: impl Read+Seek) -> bool {
+    let file1_len = seek_len(&mut file1);
+    let file2_len = seek_len(&mut file2);
+    if file1_len != file2_len {
         return false;
     }
 
