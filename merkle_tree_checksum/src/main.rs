@@ -666,8 +666,13 @@ fn run() -> i32 {
         let filename_str = file_name.to_str().unwrap();
         if !process {
             if quiet_count <= 1 {
-                // Extra newline for now
-                eprintln!("Skipping file {}\n", filename_str);
+                if quiet_count == 0 {
+                    eprintln!("{}", utils::title_center(filename_str));
+                    eprintln!("Warning: skipped");
+                } else { // quiet_count == 1
+                    // Extra newline to add space
+                    eprintln!("Warning: skipping file {}", filename_str);
+                }
             }
             if let HashCommand::VerifyHash(Some(ref mut r)) = cmd_chosen {
                 if short_output {
@@ -752,7 +757,7 @@ fn run() -> i32 {
             // Leave a padding of at least 3 equal signs on each side
             // TODO: use fixed width, or scale with terminal size?
             let abbreviated_msg = utils::abbreviate_filename(file_part, 80-8);
-            eprintln!("{:=^80}", " ".to_owned()+&abbreviated_msg+" ");
+            eprintln!("{}", utils::title_center(&abbreviated_msg));
 
             pb_file.set_message("File");
             pb_file.set_draw_rate(4);

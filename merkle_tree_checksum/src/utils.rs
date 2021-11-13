@@ -127,6 +127,11 @@ impl TryFrom<u8> for HashFunctions {
     }
 }
 
+pub(crate) fn title_center(title: &str) -> String {
+    let space_padded = format!(" {} ", title);
+    format!("{:=^80}", space_padded)
+}
+
 pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     let name_chars = name.chars().collect::<Vec<_>>();
     if name_chars.len() <= len_threshold {
