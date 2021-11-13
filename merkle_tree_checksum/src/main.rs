@@ -525,6 +525,7 @@ fn run() -> i32 {
         if let Some(err) = err_opt {
             eprintln!("Error with file {}: {}",
                     path_str.to_string_lossy(), err);
+            hashing_final_status = 1;
             match err {
                 PreHashError::MismatchedLength(_) => {
                     assert!(matches!(cmd_chosen, HashCommand::VerifyHash(_)));
