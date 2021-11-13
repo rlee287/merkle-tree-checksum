@@ -3,7 +3,7 @@ Hash function: sha256
 Block size: 4
 Branching factor: 4
 Files:
-"16_byte_file" 0x10 bytes
+"16_byte_file" 0x11 bytes
 "20_byte_file" 0x14 bytes
 "empty_file" 0x0 bytes
 Hashes:

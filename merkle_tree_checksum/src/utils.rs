@@ -127,6 +127,11 @@ impl TryFrom<u8> for HashFunctions {
     }
 }
 
+pub(crate) fn title_center(title: &str) -> String {
+    let space_padded = format!(" {} ", title);
+    format!("{:=^80}", space_padded)
+}
+
 pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> String {
     let name_chars = name.chars().collect::<Vec<_>>();
     if name_chars.len() <= len_threshold {
@@ -167,26 +172,24 @@ pub(crate) fn escape_chars(string: &str) -> String {
     }).collect()
 }
 
-pub(crate) fn get_file_list(file_strs: Vec<&OsStr>) -> Result<Vec<PathBuf>,String> {
+pub(crate) fn str_to_files(file_str: &OsStr) -> Option<Vec<PathBuf>> {
     let mut file_list = Vec::<PathBuf>::new();
-    for file_str in file_strs {
-        let file_path = Path::new(&file_str);
-        if file_path.is_file() {
-            file_list.push(file_path.to_path_buf());
-        } else if file_path.is_dir() {
-            // Walk directory to find all the files in it
-            for entry in WalkDir::new(file_path).min_depth(1).follow_links(true) {
-                let entry_unwrap = entry.unwrap();
-                let entry_path = entry_unwrap.path();
-                if entry_path.is_file() {
-                    file_list.push(entry_path.to_path_buf());
-                }
+    let file_path = Path::new(&file_str);
+    if file_path.is_file() {
+        file_list.push(file_path.to_path_buf());
+    } else if file_path.is_dir() {
+        // Walk directory to find all the files in it
+        for entry in WalkDir::new(file_path).min_depth(1).follow_links(true) {
+            let entry_unwrap = entry.unwrap();
+            let entry_path = entry_unwrap.path();
+            if entry_path.is_file() {
+                file_list.push(entry_path.to_path_buf());
             }
-        } else {
-            return Err(file_str.to_string_lossy().to_string());
         }
+    } else {
+        return None;
     }
-    return Ok(file_list);
+    return Some(file_list);
 }
 
 #[cfg(test)]

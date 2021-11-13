@@ -13,6 +13,7 @@ use std::thread;
 use crossbeam_channel::unbounded as unbounded_channel;
 
 use std::fs::{File, OpenOptions};
+use std::ffi::OsString;
 use hex::ToHex;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
@@ -35,6 +36,8 @@ use merkle_tree::reorder_hashrange_iter;
 use utils::HashFunctions;
 use utils::StoredAndComputed;
 
+use std::convert::TryFrom;
+
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle,
     ProgressDrawTarget, MultiProgress};
@@ -42,6 +45,8 @@ use git_version::git_version;
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
+
+const EMPTY_STRING: String = String::new();
 
 const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
     "the SHA2 family, the SHA3 family, Blake2b/Blake2s, and CRC32.");
@@ -56,6 +61,29 @@ where
     GenerateHash(Option<W>),
     VerifyHash(Option<R>)
 }
+
+// No Copy to simplify refactoring if non-copy types get added later
+#[derive(PartialEq, Eq, Debug, Clone)]
+enum PreHashError {
+    FileNotFound,
+    ReadPermissionError,
+    MismatchedLength(StoredAndComputed<u64>)
+}
+impl std::fmt::Display for PreHashError {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FileNotFound => write!(fmt, "file not found"),
+            Self::MismatchedLength(s_c) => {
+                write!(fmt, concat!("mismatched file length:\n",
+                    "  expected: {}\n",
+                    "  actual:   {}"),
+                    s_c.stored(), s_c.computed())
+            },
+            Self::ReadPermissionError => write!(fmt, "permission denied to read")
+        }
+    }
+}
+impl std::error::Error for PreHashError {}
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum VerificationError {
@@ -188,7 +216,7 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
         .arg(Arg::with_name("jobs").long("jobs").short("j")
-            .takes_value(true).default_value("2")
+            .takes_value(true).default_value("4")
             .validator(|input_str| -> Result<(), String> {
                 match input_str.parse::<usize>() {
                     Ok(_) => Ok(()),
@@ -233,13 +261,30 @@ fn run() -> i32 {
     let mut hashing_final_status = 0;
 
     let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
-            (Result<Vec<PathBuf>, String>, block_t, branch_t, bool, HashFunctions, Option<u64>)
+            (Vec<(OsString, Option<PreHashError>)>, block_t, branch_t, bool, HashFunctions, Option<u64>)
             = match cmd_chosen {
-        HashCommand::GenerateHash(_) => {
-            let file_vec = cmd_matches.values_of_os("FILES").unwrap().collect();
+        HashCommand::GenerateHash(None) => {
+            let file_vec: Vec<_> = cmd_matches.values_of_os("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
-                utils::get_file_list(file_vec),
+                {
+                    let mut collect_vec: Vec<_> = Vec::with_capacity(
+                        file_vec.len());
+                    for file_path in file_vec {
+                        match utils::str_to_files(file_path) {
+                            Some(paths) => {
+                                for path in paths {
+                                    match File::open(&path) {
+                                        Ok(_) => collect_vec.push((path.into_os_string(), None)),
+                                        Err(_) => collect_vec.push((path.into_os_string(), Some(PreHashError::ReadPermissionError)))
+                                    }
+                                }
+                            },
+                            None => collect_vec.push((file_path.to_owned(), Some(PreHashError::FileNotFound)))
+                        }
+                    };
+                    collect_vec
+                },
                 size_str_to_num(
                     cmd_matches.value_of("blocksize").unwrap()).unwrap(),
                 value_t!(cmd_matches, "branch", branch_t)
@@ -250,7 +295,7 @@ fn run() -> i32 {
                 None
             )
         },
-        HashCommand::VerifyHash(_) => {
+        HashCommand::VerifyHash(None) => {
             let hash_file_str = cmd_matches.value_of_os("FILE").unwrap();
             let hash_file = match File::open(hash_file_str) {
                 Ok(file) => file,
@@ -262,7 +307,7 @@ fn run() -> i32 {
             };
             let mut hash_file_reader = BufReader::new(hash_file);
 
-            let mut file_vec : Vec<PathBuf> = Vec::new();
+            let mut file_vec: Vec<(OsString, Option<PreHashError>)> = Vec::new();
             // Parse version number
             let mut version_line = String::new();
             let version_read_result = hash_file_reader.read_line(&mut version_line);
@@ -273,7 +318,7 @@ fn run() -> i32 {
             match parse_functions::parse_version_line(&version_line) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
-                    let range_str = concat!("~",crate_version!());
+                    let range_str = concat!("~","0.5");
                     let recognized_range = VersionReq::parse(range_str).unwrap();
                     if !recognized_range.matches(&version) {
                         eprintln!("Error: hash file has unsupported version {}", version);
@@ -293,7 +338,7 @@ fn run() -> i32 {
                 }
             }
             // Read in the next three lines
-            let mut hash_param_arr = [String::default(), String::default(), String::default()];
+            let mut hash_param_arr = [EMPTY_STRING; 3];
             for param_str in hash_param_arr.iter_mut() {
                 let mut line = String::new();
                 let line_result = hash_file_reader.read_line(&mut line);
@@ -382,25 +427,35 @@ fn run() -> i32 {
                             return 1;
                         }
                     };
-                    let path = PathBuf::from(unquoted_name.clone());
-                    if let Some(expected_len) = len_option {
-                        let actual_len = path.metadata().unwrap().len();
-                        if actual_len == expected_len {
-                            file_vec.push(path);
-                        } else {
-                            eprintln!(concat!(
-                                "Error: {} has length mismatch:\n",
-                                "  expected: {}\n",
-                                "  actual:   {}\n"),
-                                unquoted_name, expected_len, actual_len);
-                            if cmd_matches.is_present("failfast") {
-                                return 2;
+                    let path = PathBuf::from(unquoted_name);
+                    if path.is_file() {
+                        if File::open(&path).is_err() {
+                            // We already checked file existence
+                            file_vec.push((path.into_os_string(),
+                                Some(PreHashError::ReadPermissionError)))
+                        } else if let Some(expected_len) = len_option {
+                            let actual_len = path.metadata().unwrap().len();
+                            if actual_len == expected_len {
+                                file_vec.push((path.into_os_string(), None));
                             } else {
-                                hashing_final_status = 2;
+                                let mismatch_len_obj = StoredAndComputed::new
+                                    (expected_len, actual_len);
+                                file_vec.push((
+                                    path.into_os_string(),
+                                    Some(PreHashError::MismatchedLength(
+                                        mismatch_len_obj
+                                    )))
+                                )
                             }
+                        } else {
+                            file_vec.push((path.into_os_string(), None))
                         }
                     } else {
-                        file_vec.push(path);
+                        file_vec.push(
+                            (
+                                path.into_os_string(),
+                                Some(PreHashError::FileNotFound))
+                            )
                     }
                 } else if next_line == "Hashes:\n" || next_line == "Hashes:\r\n" {
                     assert!(!is_short_hash);
@@ -420,10 +475,7 @@ fn run() -> i32 {
             }
 
             (
-                match file_vec.iter().find(|path| !path.is_file()) {
-                    Some(i) => Err(i.to_str().unwrap().to_owned()),
-                    None => Ok(file_vec)
-                },
+                file_vec,
                 match block_size_result {
                     Ok(val) => val,
                     Err(e) => {
@@ -464,14 +516,40 @@ fn run() -> i32 {
                 // We want to ensure that the seek call succeeded
                 Some(hash_file_reader.stream_position().unwrap())
             )
-        }
+        },
+        _ => unreachable!()
     };
-    if file_list_result.is_err() {
-        eprintln!("Error: file {} does not exist",
-                file_list_result.unwrap_err());
+    let mut abort = false;
+    // Bool is whether to process this file or not
+    let file_list: Vec<(PathBuf, bool)> = file_list_result.into_iter().map(|(path_str, err_opt)| {
+        if let Some(err) = err_opt {
+            eprintln!("Error with file {}: {}",
+                    path_str.to_string_lossy(), err);
+            hashing_final_status = 1;
+            match err {
+                PreHashError::MismatchedLength(_) => {
+                    assert!(matches!(cmd_chosen, HashCommand::VerifyHash(_)));
+                    if cmd_matches.is_present("failfast") {
+                        abort = true;
+                    }
+                },
+                PreHashError::FileNotFound => {
+                    if !matches!(cmd_chosen, HashCommand::VerifyHash(_)) {
+                        abort = true;
+                    }
+                },
+                PreHashError::ReadPermissionError => {
+                    abort = true;
+                }
+            };
+            (PathBuf::from(path_str), false)
+        } else {
+            (PathBuf::from(path_str), true)
+        }
+    }).collect();
+    if abort {
         return 1;
     }
-    let file_list = file_list_result.unwrap();
 
     let quiet_count = matches.occurrences_of("quiet");
 
@@ -510,13 +588,14 @@ fn run() -> i32 {
     if quiet_count < 2 && matches!(cmd_chosen, HashCommand::VerifyHash(_))
             && !short_output && !cmd_matches.is_present("failfast") {
         eprintln!(
-            concat!("Warning: Verification of long hashes is always failfast, ",
+            concat!("Warning: Verification of long hashes may fail early ",
+                "if the hash file is malformed, ",
                 "even when --fail-fast is not specified")
         );
     }
 
     match cmd_chosen {
-        HashCommand::GenerateHash(_) => {
+        HashCommand::GenerateHash(None) => {
             let write_file_name = cmd_matches.value_of("output").unwrap();
             let overwrite = cmd_matches.is_present("overwrite");
             let open_result = match overwrite {
@@ -542,6 +621,13 @@ fn run() -> i32 {
             if !short_output {
                 writeln!(file_handle, "Files:").unwrap();
                 let list_str: Vec<String> = file_list.iter()
+                    .filter_map(|(pathbuf, keep)| {
+                        if *keep {
+                            Some(pathbuf)
+                        } else {
+                            None
+                        }
+                    })
                     .map(|path| {
                         let path_metadata = path.metadata().unwrap();
                         (path.to_str().unwrap(), path_metadata.len())
@@ -561,7 +647,7 @@ fn run() -> i32 {
             debug_assert!(verify_start_pos.is_none());
             cmd_chosen = HashCommand::GenerateHash(Some(file_handle));
         },
-        HashCommand::VerifyHash(_) => {
+        HashCommand::VerifyHash(None) => {
             let read_file_name = cmd_matches.value_of("FILE").unwrap();
             let mut hash_file = match File::open(read_file_name) {
                 Ok(file) => file,
@@ -573,11 +659,70 @@ fn run() -> i32 {
             };
             hash_file.seek(SeekFrom::Start(verify_start_pos.unwrap())).unwrap();
             cmd_chosen = HashCommand::VerifyHash(Some(BufReader::new(hash_file)))
-        }
+        },
+        _ => unreachable!()
     };
 
-    for (file_index, file_name) in file_list.iter().enumerate() {
+    for (file_index, (file_name, process)) in file_list.iter().enumerate() {
         let filename_str = file_name.to_str().unwrap();
+        if !process {
+            if quiet_count <= 1 {
+                if quiet_count == 0 {
+                    eprintln!("{}", utils::title_center(filename_str));
+                    eprintln!("Warning: skipped");
+                } else { // quiet_count == 1
+                    // Extra newline to add space
+                    eprintln!("Warning: skipping file {}", filename_str);
+                }
+            }
+            if let HashCommand::VerifyHash(Some(ref mut r)) = cmd_chosen {
+                if short_output {
+                    let mut hash_line = String::new();
+                    r.read_line(&mut hash_line).unwrap();
+                    // Still check line format, and warn if entry is malformed
+                    let hash_parts = extract_short_hash_parts(&hash_line,
+                        2*expected_hash_len);
+                    if let Some((_, quoted_name)) = hash_parts {
+                        assert_eq!(filename_str,
+                            enquote::unquote(quoted_name).unwrap());
+                    } else {
+                        eprintln!("Warning skipping file {}: {}", filename_str,
+                            VerificationError::MalformedEntry(hash_line));
+                        if cmd_matches.is_present("failfast") {
+                            return 2;
+                        }
+                    }
+                } else {
+                    loop {
+                        let mut hash_line = String::new();
+                        let chars_read = r.read_line(&mut hash_line).unwrap();
+                        let hash_parts = extract_long_hash_parts(&hash_line,
+                            2*expected_hash_len);
+                        if let Some((read_index, _)) = hash_parts {
+                            if read_index == file_index + 1 {
+                                r.seek_relative(-i64::try_from(chars_read).unwrap()).unwrap();
+                                break;
+                            } else if read_index != file_index {
+                                eprintln!("Error skipping file {}: {}",
+                                    filename_str,
+                                    VerificationError::MismatchedFileID);
+                                return 2;
+                            }
+                        } else {
+                            if chars_read > 0 {
+                                eprintln!("Error skipping file {}: {}",
+                                    filename_str,
+                                    VerificationError::MalformedEntry(hash_line));
+                                return 2;
+                            } else {
+                                break; // EOF
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
         let file_obj = match File::open(file_name.to_owned()) {
             Ok(file) => file,
             Err(err) => {
@@ -613,7 +758,7 @@ fn run() -> i32 {
             // Leave a padding of at least 3 equal signs on each side
             // TODO: use fixed width, or scale with terminal size?
             let abbreviated_msg = utils::abbreviate_filename(file_part, 80-8);
-            eprintln!("{:=^80}", " ".to_owned()+&abbreviated_msg+" ");
+            eprintln!("{}", utils::title_center(&abbreviated_msg));
 
             pb_file.set_message("File");
             pb_file.set_draw_rate(4);
@@ -652,10 +797,16 @@ fn run() -> i32 {
 
         let mut hash_loop_status: Result<(), VerificationError> = Ok(());
 
-        let block_iter = merkle_block_generator(file_size, block_size, branch_factor).into_iter();
-        for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
-            pb_hash.inc(1);
-            if !short_output {
+        if short_output {
+            // Consume sent messages without doing anything with them
+            for _ in rx {
+                pb_hash.inc(1);
+            }
+        } else {
+            let block_iter = merkle_block_generator(
+                file_size, block_size, branch_factor).into_iter();
+            for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
+                pb_hash.inc(1);
                 match &mut cmd_chosen {
                     HashCommand::GenerateHash(Some(w)) => {
                         writeln!(w, "{:3} {} {} {}",
@@ -700,9 +851,10 @@ fn run() -> i32 {
                     }
                     _ => unreachable!()
                 }
+                thread::yield_now();
             }
-            thread::yield_now();
         }
+
         pb_hash.finish_at_current_pos();
         pb_thread_handle.join().unwrap();
 
@@ -768,14 +920,12 @@ fn run() -> i32 {
                 if cmd_matches.is_present("failfast") || !short_output {
                     return 2;
                 }
+                // Long output and failfast not specified
                 match err {
-                    VerificationError::MismatchedHash(..) => {
-                        if cmd_matches.is_present("failfast") {
-                            return 2;
-                        } else {
-                            hashing_final_status = 2;
-                            continue;
-                        }
+                    VerificationError::MismatchedHash(..)
+                    | VerificationError::MalformedEntry(..) => {
+                        hashing_final_status = 2;
+                        continue;
                     }
                     _ => {return 2;}
                 }

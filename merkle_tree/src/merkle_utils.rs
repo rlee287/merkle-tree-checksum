@@ -134,6 +134,7 @@ pub struct BlockRange {
     include_end: bool
 }
 impl BlockRange {
+    #[inline]
     pub fn new(start: u64, end: u64, include_end: bool) -> BlockRange {
         if include_end {
             assert!(end >= start);
@@ -142,6 +143,7 @@ impl BlockRange {
         }
         BlockRange {start, end, include_end}
     }
+    #[inline]
     pub fn range(&self) -> u64 {
         match self.include_end {
             true => self.end-self.start+1,

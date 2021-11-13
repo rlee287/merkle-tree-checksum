@@ -4,8 +4,6 @@ use merkle_tree::{HashRange, merkle_hash_file};
 use sha2::Sha256;
 use permutohedron::Heap;
 
-mod utils;
-
 use std::convert::TryInto;
 use std::io::Cursor;
 
