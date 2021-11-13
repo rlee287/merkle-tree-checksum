@@ -50,6 +50,6 @@ rustc_version = "0.4"
 assert_cmd = "2.0"
 # Needed to allow imports
 predicates = {version = "2.0", default-features = false}
-rand = "0.8"
 serial_test = "0.5"
 scopeguard = "1.1"
+merkle_tree_test_utils = { version = "=0.1.0", path = "../merkle_tree_test_utils"}

@@ -1,5 +1,4 @@
-mod utils;
-use utils::{gen_random_name, file_contents_equal};
+use merkle_tree_test_utils::{gen_random_name, file_contents_equal};
 
 use std::env::{current_dir, set_current_dir};
 use std::fs::{remove_file, File};

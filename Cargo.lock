@@ -437,6 +437,7 @@ dependencies = [
  "genawaiter",
  "generic-array",
  "lazy_static",
+ "merkle_tree_test_utils",
  "num-iter",
  "oneshot",
  "permutohedron",
@@ -463,8 +464,8 @@ dependencies = [
  "indicatif",
  "lazy_static",
  "merkle_tree",
+ "merkle_tree_test_utils",
  "predicates",
- "rand",
  "regex",
  "rustc_version",
  "scopeguard",
@@ -473,6 +474,14 @@ dependencies = [
  "sha2",
  "sha3",
  "walkdir",
+]
+
+[[package]]
+name = "merkle_tree_test_utils"
+version = "0.1.0"
+dependencies = [
+ "merkle_tree",
+ "rand",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 [workspace]
-members = ["merkle_tree", "merkle_tree_checksum"]
+members = ["merkle_tree", "merkle_tree_checksum", "merkle_tree_test_utils"]
 
 # Below dependencies are bottlenecks from profiling
 # We don't care about dependency internals when debugging our code

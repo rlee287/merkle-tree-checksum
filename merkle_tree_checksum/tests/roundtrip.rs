@@ -1,5 +1,4 @@
-mod utils;
-use utils::gen_random_name;
+use merkle_tree_test_utils::gen_random_name;
 
 use std::fs::remove_file;
 

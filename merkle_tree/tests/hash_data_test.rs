@@ -10,8 +10,7 @@ use std::str::FromStr;
 
 use crossbeam_channel::unbounded as unbounded_channel;
 
-mod utils;
-use utils::*;
+use merkle_tree_test_utils::ThrowawayConsumer;
 
 #[test]
 fn test_blockrange_str_roundtrip() {
