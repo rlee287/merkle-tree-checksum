@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
-use threadpool::ThreadPool;
+use std::thread;
 
 use oneshot::Receiver as OneshotReceiver;
+use crossbeam_channel::{Sender, unbounded};
 
 use std::fmt::Debug;
 
@@ -33,7 +34,7 @@ impl<T> Awaitable<T> for OneshotReceiver<T> {
     }
 }
 
-pub(crate) trait PoolEvaluator {
+pub(crate) trait FnEvaluator {
     fn compute<T, F>(&self, func: F) -> Box<dyn Awaitable<T>>
     where
         T: 'static + Send,
@@ -49,7 +50,7 @@ impl DummyEvaluator {
         DummyEvaluator {}
     }
 }
-impl PoolEvaluator for DummyEvaluator {
+impl FnEvaluator for DummyEvaluator {
     fn compute<T, F> (&self, func: F) -> Box<dyn Awaitable<T>>
     where
         T: 'static,
@@ -62,29 +63,64 @@ impl PoolEvaluator for DummyEvaluator {
 // Evaluator using a thread pool
 #[derive(Debug)]
 pub(crate) struct ThreadPoolEvaluator {
-    threadpool: ThreadPool
+    thread_handles: Vec<Option<thread::JoinHandle<()>>>,
+    send_fn: Option<Sender<Box<dyn FnOnce()->() + Send>>>
+    //threads_active: AtomicUsize
 }
 impl ThreadPoolEvaluator {
     pub fn new(name: String, thread_count: usize) -> ThreadPoolEvaluator {
+        let mut handle_vec = Vec::with_capacity(thread_count);
+        let (tx, rx) = unbounded::<Box<dyn FnOnce()->() + Send>>();
+        for i in 0..thread_count {
+            let rx_copy = rx.clone();
+            handle_vec.push(Some(thread::Builder::new()
+                .name(format!("{}-{}", name, i))
+                .spawn(move || {
+                    loop {
+                        match rx_copy.recv() {
+                            Ok(func) => {
+                                func();
+                            },
+                            Err(_) => {
+                                break;
+                            }
+                        }
+                    }
+                })
+            .unwrap()))
+        }
         ThreadPoolEvaluator{
-            threadpool: ThreadPool::with_name(name, thread_count)
+            thread_handles: handle_vec,
+            send_fn: Some(tx)
         }
     }
 }
 // TODO: Rust 1.53 bug report of misleading error message without T: Send?
 #[allow(unused_must_use)]
-impl PoolEvaluator for ThreadPoolEvaluator {
+impl FnEvaluator for ThreadPoolEvaluator {
     fn compute<T, F> (&self, func: F) -> Box<dyn Awaitable<T>>
     where
         T: 'static + Send,
         F: 'static + Send + Fn() -> T
     {
         let (tx, awaitable) = oneshot::channel();
-        self.threadpool.execute(move || {
-            let computation_result = func();
-            // Deliberately ignore error case of other side hanging up
-            tx.send(computation_result);
-        });
+        if let Some(ref sender) = self.send_fn {
+            sender.send(Box::new(move || {
+                let computation_result = func();
+                // Deliberately ignore error case of other side hanging up
+                tx.send(computation_result);
+            }));
+        } else {
+            panic!("ThreadPoolEvaluator sender is None");
+        }
         Box::new(awaitable)
+    }
+}
+impl Drop for ThreadPoolEvaluator {
+    fn drop(&mut self) {
+        drop(self.send_fn.take().unwrap());
+        for handle in &mut self.thread_handles {
+            handle.take().unwrap().join().unwrap();
+        }
     }
 }

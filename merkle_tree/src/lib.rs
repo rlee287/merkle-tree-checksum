@@ -19,7 +19,7 @@ pub use merkle_utils::{branch_t, block_t};
 pub use iter_utils::*;
 
 use thread_pool::{Awaitable, DummyAwaitable};
-use thread_pool::{PoolEvaluator, DummyEvaluator, ThreadPoolEvaluator};
+use thread_pool::{FnEvaluator, DummyEvaluator, ThreadPoolEvaluator};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum HelperErrSignal {
@@ -40,7 +40,7 @@ impl EvaluatorUnion {
         Self::ThreadPool(ThreadPoolEvaluator::new(name, num_threads))
     }
 }
-impl PoolEvaluator for EvaluatorUnion {
+impl FnEvaluator for EvaluatorUnion {
     fn compute<T, F>(&self, func: F) -> Box<dyn Awaitable<T>>
     where
         T: 'static + Send,

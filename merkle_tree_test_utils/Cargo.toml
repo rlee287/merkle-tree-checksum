@@ -8,4 +8,4 @@ publish = false
 
 [dependencies]
 rand = "0.8"
-merkle_tree = { version = "=0.4.0", path = "../merkle_tree"}
+merkle_tree = { version = "=0.4.1", path = "../merkle_tree"}
