@@ -20,7 +20,7 @@ fn verify_files_short_badhash() {
         .assert();
     assert_check
         .failure()
-        .code(2)
+        .code(3)
         // TODO: check that the correct file is bad, and that others are fine
         .stderr(
             predicate::str::contains("Error").and(
@@ -43,7 +43,7 @@ fn verify_files_short_malformed() {
         .assert();
     assert_check
         .failure()
-        .code(2)
+        .code(3)
         .stderr(predicate::str::contains("Error").and(
             predicate::str::contains("malformed entry")
         ));

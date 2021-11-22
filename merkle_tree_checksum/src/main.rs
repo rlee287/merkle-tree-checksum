@@ -52,6 +52,13 @@ const EMPTY_STRING: String = String::new();
 const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
     "the SHA2 family, the SHA3 family, Blake2b/Blake2s, and CRC32.");
 
+const CMDLINE_ERR: i32 = 1;
+const DATA_READ_ERR: i32 = 2;
+const GEN_WRITE_ERR: i32 = 101; // Same exitcode as panic
+const VERIF_READ_ERR: i32 = 101; // Same exitcode as panic
+const VERIF_BAD_HEADER_ERR: i32 = 1;
+const VERIF_BAD_ENTRY_ERR: i32 = 3;
+
 // Use Options for inside because we know variant before we have the inside
 #[derive(Debug)]
 enum HashCommand<W, R>
@@ -175,7 +182,7 @@ fn run() -> i32 {
         } else {
             println!("{}", e.message);
         }
-        return 1;
+        return CMDLINE_ERR;
     }
     let matches = matches_result.unwrap();
 
@@ -217,6 +224,7 @@ fn run() -> i32 {
                 },
                 size_str_to_num(
                     cmd_matches.value_of("blocksize").unwrap()).unwrap(),
+                // TODO: return instead
                 value_t!(cmd_matches, "branch", branch_t)
                     .unwrap_or_else(|e| e.exit()),
                 cmd_matches.is_present("short"),
@@ -232,7 +240,7 @@ fn run() -> i32 {
                 Err(e) => {
                     eprintln!("Error opening hash file {}: {}",
                             hash_file_str.to_string_lossy(), e);
-                    return 1;
+                    return VERIF_READ_ERR;
                 }
             };
             let mut hash_file_reader = BufReader::new(hash_file);
@@ -243,7 +251,7 @@ fn run() -> i32 {
             let version_read_result = hash_file_reader.read_line(&mut version_line);
             if version_read_result.is_err() {
                 eprintln!("Error: unable to read in version line");
-                return 1;
+                return VERIF_READ_ERR;
             }
             match parse_functions::parse_version_line(&version_line) {
                 Ok(version) => {
@@ -252,17 +260,17 @@ fn run() -> i32 {
                     let recognized_range = VersionReq::parse(range_str).unwrap();
                     if !recognized_range.matches(&version) {
                         eprintln!("Error: hash file has unsupported version {}", version);
-                        return 1;
+                        return VERIF_BAD_HEADER_ERR;
                     }
                 },
                 Err(e) => match e {
                     ParsingErrors::MalformedFile => {
                         eprintln!("Error: hash file is malformed: unable to parse version line");
-                        return 1;
+                        return VERIF_BAD_HEADER_ERR;
                     },
                     ParsingErrors::MalformedVersion(s) => {
                         eprintln!("Error: hash file has malformed version {}",s);
-                        return 1;
+                        return VERIF_BAD_HEADER_ERR;
                     }
                     _ => unreachable!()
                 }
@@ -283,7 +291,7 @@ fn run() -> i32 {
                     }
                 } else {
                     eprintln!("Error: unable to read in parameter line");
-                    return 1;
+                    return VERIF_READ_ERR;
                 }
             }
             let (block_size_result,
@@ -311,21 +319,21 @@ fn run() -> i32 {
                         error_vec_string.join(", "));
                 }
                 eprintln!("Error: {}", error_string);
-                return 1;
+                return VERIF_BAD_HEADER_ERR;
             }
 
             let mut format_line = String::new();
             let format_line_result = hash_file_reader.read_line(&mut format_line);
             if format_line_result.is_err() {
-                eprintln!("Error: hash file is malformed: file should have file list or hash list");
-                return 1;
+                eprintln!("Error: hash file is malformed: unable to read hashes or file list");
+                return VERIF_READ_ERR;
             }
             let is_short_hash = match format_line.as_str() {
                 "Hashes:\n" | "Hashes:\r\n" => true,
                 "Files:\n" | "Files:\r\n" => false,
                 _ => {
                     eprintln!("Error: hash file is malformed: file should have file list or hash list");
-                    return 1;
+                    return VERIF_BAD_HEADER_ERR;
                 }
             };
             let list_begin_pos: Option<u64> = match is_short_hash {
@@ -341,11 +349,12 @@ fn run() -> i32 {
                     if read_err.kind() == std::io::ErrorKind::UnexpectedEof {
                         if !is_short_hash {
                             eprintln!("Error: unexpected EOF reading hashes");
+                            return VERIF_BAD_HEADER_ERR;
                         }
                     } else {
                         eprintln!("Error: Error in reading file: {}", read_err);
+                        return VERIF_READ_ERR;
                     }
-                    return 1;
                 }
                 if let Some((quoted_name, len_option)) = parse_functions::extract_quoted_filename(&next_line) {
                     assert_eq!(len_option.is_none(), is_short_hash);
@@ -354,7 +363,11 @@ fn run() -> i32 {
                         Err(e) => {
                             eprintln!("Error: unable to unquote file name {}: {}",
                                 quoted_name, e);
-                            return 1;
+                            if is_short_hash {
+                                return VERIF_BAD_ENTRY_ERR;
+                            } else {
+                                return VERIF_BAD_HEADER_ERR;
+                            }
                         }
                     };
                     let path = PathBuf::from(unquoted_name);
@@ -396,7 +409,7 @@ fn run() -> i32 {
                 } else {
                     eprintln!("Error: encountered malformed file entry {:?}",
                         next_line);
-                    return 1;
+                    return VERIF_BAD_HEADER_ERR;
                 }
             }
             assert!(is_short_hash == list_begin_pos.is_some());
@@ -415,7 +428,7 @@ fn run() -> i32 {
                             _ => unreachable!()
                         };
                         eprintln!("Error: {}", err_str);
-                        return 1;
+                        return VERIF_BAD_HEADER_ERR;
                     }
                 },
                 match branch_factor_result {
@@ -427,7 +440,7 @@ fn run() -> i32 {
                             _ => unreachable!()
                         };
                         eprintln!("Error: {}", err_str);
-                        return 1;
+                        return VERIF_BAD_HEADER_ERR;
                     }
                 },
                 is_short_hash,
@@ -440,7 +453,7 @@ fn run() -> i32 {
                             _ => unreachable!()
                         };
                         eprintln!("Error: {}", err_str);
-                        return 1;
+                        return VERIF_BAD_HEADER_ERR;
                     }
                 },
                 // We want to ensure that the seek call succeeded
@@ -449,7 +462,7 @@ fn run() -> i32 {
         },
         _ => unreachable!()
     };
-    let mut abort = false;
+    let mut abort: Result<(), i32> = Ok(());
     // Bool is whether to process this file or not
     let file_list: Vec<(PathBuf, bool)> = file_list_result.into_iter().map(|(path_str, err_opt)| {
         if let Some(err) = err_opt {
@@ -460,16 +473,16 @@ fn run() -> i32 {
                 PreHashError::MismatchedLength(_) => {
                     assert!(matches!(cmd_chosen, HashCommand::VerifyHash(_)));
                     if cmd_matches.is_present("failfast") {
-                        abort = true;
+                        abort = Err(VERIF_BAD_ENTRY_ERR);
                     }
                 },
                 PreHashError::FileNotFound => {
                     if !matches!(cmd_chosen, HashCommand::VerifyHash(_)) {
-                        abort = true;
+                        abort = Err(DATA_READ_ERR);
                     }
                 },
                 PreHashError::ReadPermissionError => {
-                    abort = true;
+                    abort = Err(DATA_READ_ERR);
                 }
             };
             (PathBuf::from(path_str), false)
@@ -477,8 +490,8 @@ fn run() -> i32 {
             (PathBuf::from(path_str), true)
         }
     }).collect();
-    if abort {
-        return 1;
+    if let Err(exit_code) = abort {
+        return exit_code;
     }
 
     let quiet_count = matches.occurrences_of("quiet");
@@ -539,7 +552,7 @@ fn run() -> i32 {
                 Err(err) => {
                     eprintln!("Error opening file {} for writing: {}",
                         write_file_name, err);
-                    return 1
+                    return GEN_WRITE_ERR;
                 }
             };
             // Write file prelude
@@ -584,7 +597,7 @@ fn run() -> i32 {
                 Err(e) => {
                     eprintln!("Error opening hash file {}: {}",
                             read_file_name, e);
-                    return 1;
+                    return VERIF_READ_ERR;
                 }
             };
             hash_file.seek(SeekFrom::Start(verify_start_pos.unwrap())).unwrap();
@@ -619,7 +632,7 @@ fn run() -> i32 {
                         eprintln!("Warning skipping file {}: {}", filename_str,
                             VerificationError::MalformedEntry(hash_line));
                         if cmd_matches.is_present("failfast") {
-                            return 2;
+                            return VERIF_BAD_ENTRY_ERR;
                         }
                     }
                 } else {
@@ -636,14 +649,14 @@ fn run() -> i32 {
                                 eprintln!("Error skipping file {}: {}",
                                     filename_str,
                                     VerificationError::MismatchedFileID);
-                                return 2;
+                                return VERIF_BAD_ENTRY_ERR;
                             }
                         } else {
                             if chars_read > 0 {
                                 eprintln!("Error skipping file {}: {}",
                                     filename_str,
                                     VerificationError::MalformedEntry(hash_line));
-                                return 2;
+                                return VERIF_BAD_ENTRY_ERR;
                             } else {
                                 break; // EOF
                             }
@@ -658,7 +671,7 @@ fn run() -> i32 {
             Err(err) => {
                 eprintln!("Error opening file {} for reading: {}",
                     filename_str, err);
-                return 1
+                return DATA_READ_ERR;
             }
         };
         let file_size = file_obj.metadata().unwrap().len();
@@ -848,16 +861,16 @@ fn run() -> i32 {
                 eprintln!("Error verifying file {}: {}", filename_str, err);
                 // TODO: error recovery when not using failfast
                 if cmd_matches.is_present("failfast") || !short_output {
-                    return 2;
+                    return VERIF_BAD_ENTRY_ERR;
                 }
                 // Long output and failfast not specified
                 match err {
                     VerificationError::MismatchedHash(..)
                     | VerificationError::MalformedEntry(..) => {
-                        hashing_final_status = 2;
+                        hashing_final_status = VERIF_BAD_ENTRY_ERR;
                         continue;
                     }
-                    _ => {return 2;}
+                    _ => {return VERIF_BAD_ENTRY_ERR;}
                 }
             }
         }
@@ -869,7 +882,7 @@ fn run() -> i32 {
         let end_pos = r.seek(SeekFrom::End(0)).unwrap();
         if current_pos != end_pos {
             eprintln!("Error: hash file has extra lines left over");
-            return 2;
+            return VERIF_BAD_ENTRY_ERR;
         }
     }
     return hashing_final_status;
