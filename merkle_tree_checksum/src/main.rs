@@ -19,7 +19,7 @@ use std::ffi::OsString;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
-use parse_functions::{ParsingErrors, size_str_to_num,
+use parse_functions::{HeaderParsingErr, size_str_to_num,
     extract_short_hash_parts, extract_long_hash_parts};
 use std::path::{Path,PathBuf};
 use format_functions::{escape_chars, title_center, abbreviate_filename};
@@ -265,11 +265,11 @@ fn run() -> i32 {
                     }
                 },
                 Err(e) => match e {
-                    ParsingErrors::MalformedFile => {
+                    HeaderParsingErr::MalformedFile => {
                         eprintln!("Error: hash file is malformed: unable to parse version line");
                         return VERIF_BAD_HEADER_ERR;
                     },
-                    ParsingErrors::MalformedVersion(s) => {
+                    HeaderParsingErr::MalformedVersion(s) => {
                         eprintln!("Error: hash file has malformed version {}",s);
                         return VERIF_BAD_HEADER_ERR;
                     }
@@ -305,11 +305,11 @@ fn run() -> i32 {
                 let mut error_string = String::default();
                 for error in other_errors {
                     match error {
-                        ParsingErrors::MalformedFile => {
+                        HeaderParsingErr::MalformedFile => {
                             error_string = "hash file is malformed: unable to parse tree parameters".to_string();
                             break;
                         },
-                        ParsingErrors::UnexpectedParameter(s) => {
+                        HeaderParsingErr::UnexpectedParameter(s) => {
                             error_vec_string.push(s);
                         },
                         _ => unreachable!()
@@ -424,8 +424,8 @@ fn run() -> i32 {
                     Ok(val) => val,
                     Err(e) => {
                         let err_str = match e {
-                            ParsingErrors::MissingParameter => "missing block size".to_owned(),
-                            ParsingErrors::BadParameterValue(v) => v,
+                            HeaderParsingErr::MissingParameter => "missing block size".to_owned(),
+                            HeaderParsingErr::BadParameterValue(v) => v,
                             _ => unreachable!()
                         };
                         eprintln!("Error: {}", err_str);
@@ -436,8 +436,8 @@ fn run() -> i32 {
                     Ok(val) => val,
                     Err(e) => {
                         let err_str = match e {
-                            ParsingErrors::MissingParameter => "missing branch factor".to_owned(),
-                            ParsingErrors::BadParameterValue(v) => v,
+                            HeaderParsingErr::MissingParameter => "missing branch factor".to_owned(),
+                            HeaderParsingErr::BadParameterValue(v) => v,
                             _ => unreachable!()
                         };
                         eprintln!("Error: {}", err_str);
@@ -449,8 +449,8 @@ fn run() -> i32 {
                     Ok(val) => val,
                     Err(e) => {
                         let err_str = match e {
-                            ParsingErrors::MissingParameter => "missing hash function".to_owned(),
-                            ParsingErrors::BadParameterValue(v) => v,
+                            HeaderParsingErr::MissingParameter => "missing hash function".to_owned(),
+                            HeaderParsingErr::BadParameterValue(v) => v,
                             _ => unreachable!()
                         };
                         eprintln!("Error: {}", err_str);

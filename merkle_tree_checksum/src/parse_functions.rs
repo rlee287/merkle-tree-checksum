@@ -13,7 +13,7 @@ use crate::utils::HashFunctions;
 use merkle_tree::{BlockRange, HashRange, branch_t, block_t};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ParsingErrors {
+pub(crate) enum HeaderParsingErr {
     MalformedFile,
     UnexpectedParameter(String),
     MissingParameter,
@@ -112,20 +112,20 @@ pub(crate) fn extract_quoted_filename(line: &str) -> Option<(String, Option<u64>
 }
 
 pub(crate) fn parse_version_line(version_line: &str)
-        -> Result<Version, ParsingErrors> {
+        -> Result<Version, HeaderParsingErr> {
     let mut version_str_iter = version_line.split_whitespace();
     let version_obj: Option<Version>;
     if let Some(name_check) = version_str_iter.next() {
         if name_check != crate_name!() {
-            return Err(ParsingErrors::MalformedFile);
+            return Err(HeaderParsingErr::MalformedFile);
         }
     } else {
-        return Err(ParsingErrors::MalformedFile);
+        return Err(HeaderParsingErr::MalformedFile);
     }
     if let Some(version_str_token) = version_str_iter.next() {
         if !version_str_token.starts_with('v') {
             return Err(
-                ParsingErrors::MalformedVersion(version_str_token.to_string())
+                HeaderParsingErr::MalformedVersion(version_str_token.to_string())
             );
         }
         let version_str = &version_str_token[1..];
@@ -133,39 +133,39 @@ pub(crate) fn parse_version_line(version_line: &str)
             Ok(v) => v,
             Err(_e) => {
                 return Err(
-                    ParsingErrors::MalformedVersion(version_str.to_string())
+                    HeaderParsingErr::MalformedVersion(version_str.to_string())
                 );
             }
         };
         version_obj = Some(file_version);
     } else {
-        return Err(ParsingErrors::MalformedFile);
+        return Err(HeaderParsingErr::MalformedFile);
     }
     if version_str_iter.next() == None {
         return Ok(version_obj.unwrap());
     } else {
-        return Err(ParsingErrors::MalformedFile);
+        return Err(HeaderParsingErr::MalformedFile);
     }
 }
 
 // Tuple is block_size, branch, hash, other_error
 // TODO: tunnel full error information out when necessary
 pub(crate) fn get_hash_params(string_arr: &[String; 3])
-        -> (Result<block_t, ParsingErrors>,
-            Result<branch_t, ParsingErrors>,
-            Result<HashFunctions, ParsingErrors>,
-            Vec<ParsingErrors>) {
-    let mut block_size_result: Result<block_t, ParsingErrors>
-            = Err(ParsingErrors::MissingParameter);
-    let mut branch_factor_result: Result<branch_t, ParsingErrors>
-            = Err(ParsingErrors::MissingParameter);
-    let mut hash_function_result: Result<HashFunctions, ParsingErrors>
-            = Err(ParsingErrors::MissingParameter);
-    let mut other_errors: Vec<ParsingErrors> = Vec::new();
+        -> (Result<block_t, HeaderParsingErr>,
+            Result<branch_t, HeaderParsingErr>,
+            Result<HashFunctions, HeaderParsingErr>,
+            Vec<HeaderParsingErr>) {
+    let mut block_size_result: Result<block_t, HeaderParsingErr>
+            = Err(HeaderParsingErr::MissingParameter);
+    let mut branch_factor_result: Result<branch_t, HeaderParsingErr>
+            = Err(HeaderParsingErr::MissingParameter);
+    let mut hash_function_result: Result<HashFunctions, HeaderParsingErr>
+            = Err(HeaderParsingErr::MissingParameter);
+    let mut other_errors: Vec<HeaderParsingErr> = Vec::new();
     for string_element in string_arr {
         let string_split: Vec<&str> = string_element.split(':').collect();
         if string_split.len() != 2 {
-            other_errors.push(ParsingErrors::MalformedFile);
+            other_errors.push(HeaderParsingErr::MalformedFile);
             break;
         }
         let (key, value) = (string_split[0], string_split[1].trim());
@@ -173,14 +173,14 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
             "Hash function" => {
                 hash_function_result = match value.parse::<HashFunctions>() {
                     Ok(val) => Ok(val),
-                    Err(_e) => Err(ParsingErrors::BadParameterValue(
+                    Err(_e) => Err(HeaderParsingErr::BadParameterValue(
                         format!("invalid hash function {}", value)
                     ))
                 }
             },
             "Block size" => {
                 block_size_result = match size_str_to_num(value) {
-                    Some(0) | None => Err(ParsingErrors::BadParameterValue(
+                    Some(0) | None => Err(HeaderParsingErr::BadParameterValue(
                         format!("invalid block size {}", value)
                     )),
                     Some(val) => Ok(val)
@@ -189,7 +189,7 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
             "Branching factor" => {
                 branch_factor_result = match value.parse::<branch_t>() {
                     Ok(0) | Ok(1) | Err(_) =>
-                        Err(ParsingErrors::BadParameterValue(
+                        Err(HeaderParsingErr::BadParameterValue(
                             format!("invalid branching factor {}", value)
                         )
                     ),
@@ -198,7 +198,7 @@ pub(crate) fn get_hash_params(string_arr: &[String; 3])
             },
             _ => {
                 other_errors.push(
-                    ParsingErrors::UnexpectedParameter(
+                    HeaderParsingErr::UnexpectedParameter(
                         key.to_owned()
                     )
                 );
