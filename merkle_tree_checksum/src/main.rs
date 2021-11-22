@@ -8,6 +8,7 @@ extern crate enquote;
 mod crc32_utils;
 mod utils;
 mod error_types;
+mod format_functions;
 mod parse_functions;
 
 use std::thread;
@@ -21,7 +22,7 @@ use semver::VersionReq;
 use parse_functions::{ParsingErrors, size_str_to_num,
     extract_short_hash_parts, extract_long_hash_parts};
 use std::path::{Path,PathBuf};
-use utils::escape_chars;
+use format_functions::{escape_chars, title_center, abbreviate_filename};
 
 use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
@@ -611,7 +612,7 @@ fn run() -> i32 {
         if !process {
             if quiet_count <= 1 {
                 if quiet_count == 0 {
-                    eprintln!("{}", utils::title_center(filename_str));
+                    eprintln!("{}", title_center(filename_str));
                     eprintln!("Warning: skipped");
                 } else { // quiet_count == 1
                     // Extra newline to add space
@@ -700,8 +701,8 @@ fn run() -> i32 {
 
             // Leave a padding of at least 3 equal signs on each side
             // TODO: use fixed width, or scale with terminal size?
-            let abbreviated_msg = utils::abbreviate_filename(file_part, 80-8);
-            eprintln!("{}", utils::title_center(&abbreviated_msg));
+            let abbreviated_msg = abbreviate_filename(file_part, 80-8);
+            eprintln!("{}", title_center(&abbreviated_msg));
 
             pb_file.set_message("File");
             pb_file.set_draw_rate(4);
