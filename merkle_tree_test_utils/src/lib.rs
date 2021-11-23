@@ -102,11 +102,8 @@ pub fn file_contents_equal(mut file1: impl Read+Seek, mut file2: impl Read+Seek)
 
             file1.read_to_end(&mut file1_remainder).unwrap();
             file2.read_to_end(&mut file2_remainder).unwrap();
-            if file1_block != file2_block {
-                return false;
-            } else {
-                return true;
-            }
+
+            return file1_block == file2_block;
         } else {
             panic!("{}", "Error reading from one of the files");
         }
