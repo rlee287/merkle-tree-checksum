@@ -3,12 +3,17 @@
 extern crate merkle_tree;
 
 use std::convert::TryFrom;
+use std::str::FromStr;
+use std::fmt;
+use crate::parse_functions::HeaderParsingErr;
+use crate::parse_functions::size_str_to_num;
 
 use digest::Digest;
 use crate::crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use blake2::{Blake2b, Blake2s};
+use merkle_tree::{block_t, branch_t};
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -114,6 +119,127 @@ impl TryFrom<u8> for HashFunctions {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HeaderElement {
+    BlockSize,
+    BranchFactor,
+    HashFunction
+}
+type HeaderElementFromStrErr = ();
+impl FromStr for HeaderElement {
+    type Err = HeaderElementFromStrErr;
+    fn from_str(string: &str) -> Result<Self, Self::Err> {
+        match string {
+            "Block size" | "block size" => Ok(Self::BlockSize),
+            "Branching factor" | "branch factor" => Ok(Self::BranchFactor),
+            "Hash function" | "hash function" => Ok(Self::HashFunction),
+            _ => Err(())
+        }
+    }
+}
+impl fmt::Display for HeaderElement {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::BlockSize => write!(fmt, "Block size"),
+            Self::BranchFactor => write!(fmt, "Branching factor"),
+            Self::HashFunction => write!(fmt, "Hash function")
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TreeParams {
+    pub block_size: block_t,
+    pub branch_factor: branch_t,
+    pub hash_function: HashFunctions
+}
+impl TreeParams {
+    pub fn from_lines(string_arr: &[String; 3]) -> Result<TreeParams, Vec<HeaderParsingErr>> {
+        let mut block_size_opt: Option<block_t> = None;
+        let mut branch_factor_opt: Option<branch_t> = None;
+        let mut hash_function_opt: Option<HashFunctions> = None;
+        let mut errors: Vec<HeaderParsingErr> = Vec::new();
+        for string_element in string_arr {
+            let string_split: Vec<&str> = string_element.split(':').collect();
+            if string_split.len() != 2 {
+                errors.push(HeaderParsingErr::MalformedFile);
+                continue;
+            }
+            let (key, value) = (string_split[0], string_split[1].trim());
+            match HeaderElement::from_str(key) {
+                Ok(HeaderElement::BlockSize) => {
+                    match size_str_to_num(value) {
+                        Some(0) | None => {
+                            errors.push(HeaderParsingErr::BadParameterValue(
+                                HeaderElement::BlockSize, value.to_owned()));
+                        }
+                        Some(val) => {
+                            block_size_opt = Some(val);
+                        }
+                    }
+                },
+                Ok(HeaderElement::BranchFactor) => {
+                    match value.parse::<branch_t>() {
+                        Ok(0) | Ok(1) | Err(_) => {
+                            errors.push(HeaderParsingErr::BadParameterValue(
+                                HeaderElement::BranchFactor, value.to_owned()));
+                        },
+                        Ok(val) => {
+                            branch_factor_opt = Some(val)
+                        }
+                    }
+                },
+                Ok(HeaderElement::HashFunction) => {
+                    match value.parse::<HashFunctions>() {
+                        Err(_) => {
+                            errors.push(HeaderParsingErr::BadParameterValue(
+                                HeaderElement::HashFunction, value.to_owned()));
+                        },
+                        Ok(val) => {
+                            hash_function_opt = Some(val)
+                        }
+                    }
+                },
+                Err(_) => {
+                    errors.push(
+                        HeaderParsingErr::UnexpectedParameter(key.to_owned()));
+                    continue;
+                }
+            }
+        }
+        if let (Some(block_size), Some(branch_factor), Some(hash_function)) = (block_size_opt, branch_factor_opt, hash_function_opt) {
+            Ok(TreeParams {
+                block_size,
+                branch_factor,
+                hash_function
+            })
+        } else {
+            if block_size_opt.is_none() {
+                errors.push(
+                    HeaderParsingErr::MissingParameter(HeaderElement::BlockSize));
+            }
+            if branch_factor_opt.is_none() {
+                errors.push(
+                    HeaderParsingErr::MissingParameter(HeaderElement::BranchFactor));
+            }
+            if hash_function_opt.is_none() {
+                errors.push(
+                    HeaderParsingErr::MissingParameter(HeaderElement::HashFunction));
+            }
+            assert!(!errors.is_empty());
+            Err(errors)
+        }
+    }
+}
+impl std::fmt::Display for TreeParams {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(fmt, "Hash function: {}", self.hash_function)?;
+        writeln!(fmt, "Block size: {}", self.block_size)?;
+        writeln!(fmt, "Branching factor: {}", self.branch_factor)?;
+        Ok(())
+    }
+}
+
 pub(crate) fn str_to_files(file_str: &OsStr) -> Option<Vec<PathBuf>> {
     let mut file_list = Vec::<PathBuf>::new();
     let file_path = Path::new(&file_str);
@@ -148,6 +274,15 @@ mod tests {
             let enum_as_u8 = u8::from(enum_variant);
             let u8_enum_roundtrip = HashFunctions::try_from(enum_as_u8);
             assert_eq!(Ok(enum_variant), u8_enum_roundtrip);
+        }
+    }
+    #[test]
+    fn enum_header_roundtrip() {
+        let enum_arr = [HeaderElement::BlockSize, HeaderElement::BranchFactor, HeaderElement::HashFunction];
+        for enum_variant in enum_arr {
+            let enum_variant_name = format!("{}", enum_variant);
+            let enum_roundtrip = HeaderElement::from_str(&enum_variant_name);
+            assert_eq!(Ok(enum_variant), enum_roundtrip);
         }
     }
 }

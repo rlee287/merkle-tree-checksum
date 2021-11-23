@@ -36,6 +36,7 @@ use merkle_tree::reorder_hashrange_iter;
 
 use utils::HashFunctions;
 use utils::StoredAndComputed;
+use utils::TreeParams;
 use error_types::{PreHashError, VerificationError};
 
 use std::convert::TryFrom;
@@ -198,8 +199,8 @@ fn run() -> i32 {
 
     let mut hashing_final_status = 0;
 
-    let (file_list_result, block_size, branch_factor, short_output, hash_enum, verify_start_pos):
-            (Vec<(OsString, Option<PreHashError>)>, block_t, branch_t, bool, HashFunctions, Option<u64>)
+    let (file_list_result, tree_params, short_output, verify_start_pos):
+            (Vec<(OsString, Option<PreHashError>)>, TreeParams, bool, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash(None) => {
             let file_vec: Vec<_> = cmd_matches.values_of_os("FILES").unwrap().collect();
@@ -223,14 +224,16 @@ fn run() -> i32 {
                     };
                     collect_vec
                 },
-                size_str_to_num(
-                    cmd_matches.value_of("blocksize").unwrap()).unwrap(),
-                // TODO: return instead
-                value_t!(cmd_matches, "branch", branch_t)
-                    .unwrap_or_else(|e| e.exit()),
+                // e.exits will never get actually called
+                TreeParams {
+                    block_size: size_str_to_num(
+                        cmd_matches.value_of("blocksize").unwrap()).unwrap(),
+                    branch_factor: value_t!(cmd_matches, "branch", branch_t)
+                        .unwrap_or_else(|e| e.exit()),
+                    hash_function: value_t!(cmd_matches, "hash", HashFunctions)
+                        .unwrap_or_else(|e| e.exit())
+                },
                 cmd_matches.is_present("short"),
-                value_t!(cmd_matches, "hash", HashFunctions)
-                    .unwrap_or_else(|e| e.exit()),
                 None
             )
         },
@@ -295,31 +298,11 @@ fn run() -> i32 {
                     return VERIF_READ_ERR;
                 }
             }
-            let (block_size_result,
-                branch_factor_result,
-                hash_function_result,
-                other_errors)
-                = parse_functions::get_hash_params(&hash_param_arr);
-            if !other_errors.is_empty() {
-                let mut error_vec_string: Vec<String> = Vec::new();
-                let mut error_string = String::default();
+            let tree_param_result = TreeParams::from_lines(&hash_param_arr);
+            if let Err(other_errors) = tree_param_result {
                 for error in other_errors {
-                    match error {
-                        HeaderParsingErr::MalformedFile => {
-                            error_string = "hash file is malformed: unable to parse tree parameters".to_string();
-                            break;
-                        },
-                        HeaderParsingErr::UnexpectedParameter(s) => {
-                            error_vec_string.push(s);
-                        },
-                        _ => unreachable!()
-                    };
+                    eprintln!("Error: {}", error);
                 }
-                if error_string.is_empty() {
-                    error_string = format!("hash file has unexpected parameters {}",
-                        error_vec_string.join(", "));
-                }
-                eprintln!("Error: {}", error_string);
                 return VERIF_BAD_HEADER_ERR;
             }
 
@@ -420,43 +403,8 @@ fn run() -> i32 {
 
             (
                 file_vec,
-                match block_size_result {
-                    Ok(val) => val,
-                    Err(e) => {
-                        let err_str = match e {
-                            HeaderParsingErr::MissingParameter => "missing block size".to_owned(),
-                            HeaderParsingErr::BadParameterValue(v) => v,
-                            _ => unreachable!()
-                        };
-                        eprintln!("Error: {}", err_str);
-                        return VERIF_BAD_HEADER_ERR;
-                    }
-                },
-                match branch_factor_result {
-                    Ok(val) => val,
-                    Err(e) => {
-                        let err_str = match e {
-                            HeaderParsingErr::MissingParameter => "missing branch factor".to_owned(),
-                            HeaderParsingErr::BadParameterValue(v) => v,
-                            _ => unreachable!()
-                        };
-                        eprintln!("Error: {}", err_str);
-                        return VERIF_BAD_HEADER_ERR;
-                    }
-                },
+                tree_param_result.unwrap(),
                 is_short_hash,
-                match hash_function_result {
-                    Ok(val) => val,
-                    Err(e) => {
-                        let err_str = match e {
-                            HeaderParsingErr::MissingParameter => "missing hash function".to_owned(),
-                            HeaderParsingErr::BadParameterValue(v) => v,
-                            _ => unreachable!()
-                        };
-                        eprintln!("Error: {}", err_str);
-                        return VERIF_BAD_HEADER_ERR;
-                    }
-                },
                 // We want to ensure that the seek call succeeded
                 Some(hash_file_reader.stream_position().unwrap())
             )
@@ -497,9 +445,13 @@ fn run() -> i32 {
 
     let quiet_count = matches.occurrences_of("quiet");
 
+    // e.exit() never gets called because "jobs" has a default value
     let thread_count = value_t!(matches, "jobs", usize)
         .unwrap_or_else(|e| e.exit());
 
+    let hash_enum: HashFunctions = tree_params.hash_function;
+    let block_size: block_t = tree_params.block_size;
+    let branch_factor: branch_t = tree_params.branch_factor;
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
         HashFunctions::crc32 =>
@@ -558,9 +510,8 @@ fn run() -> i32 {
             };
             // Write file prelude
             writeln!(file_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
-            writeln!(file_handle, "Hash function: {}", hash_enum).unwrap();
-            writeln!(file_handle, "Block size: {}", block_size).unwrap();
-            writeln!(file_handle, "Branching factor: {}", branch_factor).unwrap();
+            // tree_params Display impl includes ending newline
+            write!(file_handle, "{}", tree_params).unwrap();
 
             if !short_output {
                 writeln!(file_handle, "Files:").unwrap();
@@ -579,9 +530,8 @@ fn run() -> i32 {
                     .map(|(string, len)| {
                         let escaped_str = escape_chars(string);
                         let quoted_str = enquote::enquote('"', &escaped_str);
-                        (quoted_str, len)
+                        format!("{} {:#x} bytes", quoted_str, len)
                     })
-                    .map(|(string, len)| format!("{} {:#x} bytes", string, len))
                     .collect();
                 writeln!(file_handle, "{}", list_str.join("\n")).unwrap();
             }
@@ -652,15 +602,13 @@ fn run() -> i32 {
                                     VerificationError::MismatchedFileID);
                                 return VERIF_BAD_ENTRY_ERR;
                             }
+                        } else  if chars_read > 0 {
+                            eprintln!("Error skipping file {}: {}",
+                                filename_str,
+                                VerificationError::MalformedEntry(hash_line));
+                            return VERIF_BAD_ENTRY_ERR;
                         } else {
-                            if chars_read > 0 {
-                                eprintln!("Error skipping file {}: {}",
-                                    filename_str,
-                                    VerificationError::MalformedEntry(hash_line));
-                                return VERIF_BAD_ENTRY_ERR;
-                            } else {
-                                break; // EOF
-                            }
+                            break; // EOF
                         }
                     }
                 }

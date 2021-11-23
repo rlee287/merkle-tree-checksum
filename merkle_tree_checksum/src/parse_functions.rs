@@ -6,19 +6,36 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use cached::cached;
 
+use std::fmt;
 use std::str::FromStr;
 use regex::Regex;
 use hex::FromHex;
-use crate::utils::HashFunctions;
-use merkle_tree::{BlockRange, HashRange, branch_t, block_t};
+use crate::utils::HeaderElement;
+use merkle_tree::{BlockRange, HashRange, block_t};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HeaderParsingErr {
     MalformedFile,
     UnexpectedParameter(String),
-    MissingParameter,
-    BadParameterValue(String),
+    MissingParameter(HeaderElement),
+    BadParameterValue(HeaderElement, String),
     MalformedVersion(String),
+}
+impl fmt::Display for HeaderParsingErr {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::MalformedFile => write!(fmt,
+                "Hash file is malformed: unable to parse tree parameters"),
+            Self::UnexpectedParameter(p) => write!(fmt,
+                "Hash file has unexpected parameter {}", p),
+            Self::MissingParameter(p) => write!(fmt,
+                "Hash file is missing parameter {}", p),
+            Self::BadParameterValue(p, val) => write!(fmt,
+                "Hash file parameter {} has invalid value {}", p, val),
+            Self::MalformedVersion(vers) => write!(fmt,
+                "Hash file has malformed version {}", vers)
+        }
+    }
 }
 
 const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
@@ -146,66 +163,6 @@ pub(crate) fn parse_version_line(version_line: &str)
     } else {
         return Err(HeaderParsingErr::MalformedFile);
     }
-}
-
-// Tuple is block_size, branch, hash, other_error
-// TODO: tunnel full error information out when necessary
-pub(crate) fn get_hash_params(string_arr: &[String; 3])
-        -> (Result<block_t, HeaderParsingErr>,
-            Result<branch_t, HeaderParsingErr>,
-            Result<HashFunctions, HeaderParsingErr>,
-            Vec<HeaderParsingErr>) {
-    let mut block_size_result: Result<block_t, HeaderParsingErr>
-            = Err(HeaderParsingErr::MissingParameter);
-    let mut branch_factor_result: Result<branch_t, HeaderParsingErr>
-            = Err(HeaderParsingErr::MissingParameter);
-    let mut hash_function_result: Result<HashFunctions, HeaderParsingErr>
-            = Err(HeaderParsingErr::MissingParameter);
-    let mut other_errors: Vec<HeaderParsingErr> = Vec::new();
-    for string_element in string_arr {
-        let string_split: Vec<&str> = string_element.split(':').collect();
-        if string_split.len() != 2 {
-            other_errors.push(HeaderParsingErr::MalformedFile);
-            break;
-        }
-        let (key, value) = (string_split[0], string_split[1].trim());
-        match key {
-            "Hash function" => {
-                hash_function_result = match value.parse::<HashFunctions>() {
-                    Ok(val) => Ok(val),
-                    Err(_e) => Err(HeaderParsingErr::BadParameterValue(
-                        format!("invalid hash function {}", value)
-                    ))
-                }
-            },
-            "Block size" => {
-                block_size_result = match size_str_to_num(value) {
-                    Some(0) | None => Err(HeaderParsingErr::BadParameterValue(
-                        format!("invalid block size {}", value)
-                    )),
-                    Some(val) => Ok(val)
-                }
-            },
-            "Branching factor" => {
-                branch_factor_result = match value.parse::<branch_t>() {
-                    Ok(0) | Ok(1) | Err(_) =>
-                        Err(HeaderParsingErr::BadParameterValue(
-                            format!("invalid branching factor {}", value)
-                        )
-                    ),
-                    Ok(val) => Ok(val)
-                }
-            },
-            _ => {
-                other_errors.push(
-                    HeaderParsingErr::UnexpectedParameter(
-                        key.to_owned()
-                    )
-                );
-            }
-        }
-    }
-    return (block_size_result, branch_factor_result, hash_function_result, other_errors);
 }
 
 // Using cache instead of once-cell for future flexibility
