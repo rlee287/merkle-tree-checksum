@@ -5,7 +5,7 @@ extern crate merkle_tree;
 use std::convert::TryFrom;
 use std::str::FromStr;
 use std::fmt;
-use crate::parse_functions::HeaderParsingErr;
+use crate::error_types::HeaderParsingErr;
 use crate::parse_functions::size_str_to_num;
 
 use digest::Digest;
@@ -231,8 +231,8 @@ impl TreeParams {
         }
     }
 }
-impl std::fmt::Display for TreeParams {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for TreeParams {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         writeln!(fmt, "Hash function: {}", self.hash_function)?;
         writeln!(fmt, "Block size: {}", self.block_size)?;
         writeln!(fmt, "Branching factor: {}", self.branch_factor)?;

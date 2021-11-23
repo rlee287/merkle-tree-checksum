@@ -19,7 +19,7 @@ use std::ffi::OsString;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
-use parse_functions::{HeaderParsingErr, size_str_to_num,
+use parse_functions::{size_str_to_num,
     extract_short_hash_parts, extract_long_hash_parts};
 use std::path::{Path,PathBuf};
 use format_functions::{escape_chars, title_center, abbreviate_filename};
@@ -37,7 +37,7 @@ use merkle_tree::reorder_hashrange_iter;
 use utils::HashFunctions;
 use utils::StoredAndComputed;
 use utils::TreeParams;
-use error_types::{PreHashError, VerificationError};
+use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 
 use std::convert::TryFrom;
 

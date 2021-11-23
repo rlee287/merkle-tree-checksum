@@ -6,37 +6,12 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 use cached::cached;
 
-use std::fmt;
 use std::str::FromStr;
 use regex::Regex;
 use hex::FromHex;
-use crate::utils::HeaderElement;
-use merkle_tree::{BlockRange, HashRange, block_t};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum HeaderParsingErr {
-    MalformedFile,
-    UnexpectedParameter(String),
-    MissingParameter(HeaderElement),
-    BadParameterValue(HeaderElement, String),
-    MalformedVersion(String),
-}
-impl fmt::Display for HeaderParsingErr {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::MalformedFile => write!(fmt,
-                "Hash file is malformed: unable to parse tree parameters"),
-            Self::UnexpectedParameter(p) => write!(fmt,
-                "Hash file has unexpected parameter {}", p),
-            Self::MissingParameter(p) => write!(fmt,
-                "Hash file is missing parameter {}", p),
-            Self::BadParameterValue(p, val) => write!(fmt,
-                "Hash file parameter {} has invalid value {}", p, val),
-            Self::MalformedVersion(vers) => write!(fmt,
-                "Hash file has malformed version {}", vers)
-        }
-    }
-}
+use merkle_tree::{BlockRange, HashRange, block_t};
+use crate::error_types::HeaderParsingErr;
 
 const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
 const NEWLINE_REGEX: &str = "(?:\\n|\\r\\n)?";

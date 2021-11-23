@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
-use crate::utils::StoredAndComputed;
+use crate::utils::{StoredAndComputed, HeaderElement};
 use merkle_tree::BlockRange;
 
 use hex::ToHex;
+use std::fmt;
 
 // No Copy to simplify refactoring if non-copy types get added later
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -11,8 +12,8 @@ pub(crate) enum PreHashError {
     ReadPermissionError,
     MismatchedLength(StoredAndComputed<u64>)
 }
-impl std::fmt::Display for PreHashError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for PreHashError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::FileNotFound => write!(fmt, "file not found"),
             Self::MismatchedLength(s_c) => {
@@ -27,6 +28,32 @@ impl std::fmt::Display for PreHashError {
 }
 impl std::error::Error for PreHashError {}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HeaderParsingErr {
+    MalformedFile,
+    UnexpectedParameter(String),
+    MissingParameter(HeaderElement),
+    BadParameterValue(HeaderElement, String),
+    MalformedVersion(String),
+}
+impl fmt::Display for HeaderParsingErr {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::MalformedFile => write!(fmt,
+                "Hash file is malformed: unable to parse tree parameters"),
+            Self::UnexpectedParameter(p) => write!(fmt,
+                "Hash file has unexpected parameter {}", p),
+            Self::MissingParameter(p) => write!(fmt,
+                "Hash file is missing parameter {}", p),
+            Self::BadParameterValue(p, val) => write!(fmt,
+                "Hash file parameter {} has invalid value {}", p, val),
+            Self::MalformedVersion(vers) => write!(fmt,
+                "Hash file has malformed version {}", vers)
+        }
+    }
+}
+impl std::error::Error for HeaderParsingErr {}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub(crate) enum VerificationError {
     MismatchedFileID, // No StoredAndComputed as this would not be helpful
@@ -37,8 +64,8 @@ pub(crate) enum VerificationError {
     MalformedEntry(String), // String is the malformed line
     UnexpectedEof
 }
-impl std::fmt::Display for VerificationError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for VerificationError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Will be printed as "Error verifying file {name}: {err}\n"
         match self {
             Self::MismatchedFileID => write!(fmt, "found entry for different file"),
