@@ -13,6 +13,7 @@ use crate::crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use blake2::{Blake2b, Blake2s};
+use blake3::Hasher as Blake3;
 use merkle_tree::{block_t, branch_t};
 
 use std::ffi::OsStr;
@@ -65,7 +66,8 @@ arg_enum!{
         sha3_384 = 0xca,
         sha3_512 = 0xcb,
         blake2b = 0xcc,
-        blake2s = 0xcd
+        blake2s = 0xcd,
+        blake3 = 0xce
     }
 }
 
@@ -86,7 +88,8 @@ impl HashFunctions {
             HashFunctions::sha3_384 => Sha3_384::output_size(),
             HashFunctions::sha3_512 => Sha3_512::output_size(),
             HashFunctions::blake2b => Blake2b::output_size(),
-            HashFunctions::blake2s => Blake2s::output_size()
+            HashFunctions::blake2s => Blake2s::output_size(),
+            HashFunctions::blake3 => Blake3::output_size()
         }
     }
 }
@@ -114,6 +117,7 @@ impl TryFrom<u8> for HashFunctions {
             0xcb => Ok(HashFunctions::sha3_512),
             0xcc => Ok(HashFunctions::blake2b),
             0xcd => Ok(HashFunctions::blake2s),
+            0xce => Ok(HashFunctions::blake3),
             _ => Err(())
         }
     }
