@@ -53,7 +53,8 @@ const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
 const EMPTY_STRING: String = String::new();
 
 const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
-    "the SHA2 family, the SHA3 family, Blake2b/Blake2s, and CRC32.");
+    "the SHA2 family, the SHA3 family, Blake2b/Blake2s, Blake3, ",
+    "and CRC32.");
 
 const CMDLINE_ERR: i32 = 1;
 const DATA_READ_ERR: i32 = 2;
