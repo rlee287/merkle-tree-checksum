@@ -28,15 +28,15 @@ pub struct StoredAndComputed<T> {
     computed: T
 }
 impl<T> StoredAndComputed<T> {
-    pub fn new(stored: T, computed: T) -> Self {
+    pub const fn new(stored: T, computed: T) -> Self {
         StoredAndComputed {stored, computed}
     }
     #[inline]
-    pub fn stored(&self) -> &T {
+    pub const fn stored(&self) -> &T {
         &self.stored
     }
     #[inline]
-    pub fn computed(&self) -> &T {
+    pub const fn computed(&self) -> &T {
         &self.computed
     }
 }

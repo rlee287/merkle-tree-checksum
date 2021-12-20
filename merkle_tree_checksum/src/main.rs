@@ -628,7 +628,7 @@ fn run() -> i32 {
             }
         };
         let file_size = file_obj.metadata().unwrap().len();
-        let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor).unwrap();
+        let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor);
         let pb_file_style = ProgressStyle::default_bar()
             // 4 = max length of message strings below
             .template("{msg:4} {bar:20} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>11}");

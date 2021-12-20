@@ -36,21 +36,18 @@ pub(crate) const fn exp_ceil_log(number: u64, base: u16) -> u64 {
     // return
     result
 }
-pub const fn node_count(file_size: u64, block_size: block_t, branch: branch_t) -> Option<u64> {
+pub const fn node_count(file_size: u64, block_size: block_t, branch: branch_t) -> u64 {
     let block_count = ceil_div(file_size, block_size as u64);
     let mut node_count = block_count;
     let mut node_at_layer_count = block_count;
-    if branch < 2 {
-        None
-    } else {
-        while node_at_layer_count > 1 {
-            node_at_layer_count = ceil_div(node_at_layer_count, branch as u64);
-            node_count += node_at_layer_count;
-        }
-        match node_count {
-            0 => Some(1),
-            val => Some(val)
-        }
+    assert!(branch >= 2);
+    while node_at_layer_count > 1 {
+        node_at_layer_count = ceil_div(node_at_layer_count, branch as u64);
+        node_count += node_at_layer_count;
+    }
+    match node_count {
+        0 => 1,
+        val => val
     }
 }
 
@@ -135,7 +132,7 @@ pub struct BlockRange {
 }
 impl BlockRange {
     #[inline]
-    pub fn new(start: u64, end: u64, include_end: bool) -> BlockRange {
+    pub const fn new(start: u64, end: u64, include_end: bool) -> BlockRange {
         if include_end {
             assert!(end >= start);
         } else {
@@ -144,22 +141,22 @@ impl BlockRange {
         BlockRange {start, end, include_end}
     }
     #[inline]
-    pub fn range(&self) -> u64 {
+    pub const fn range(&self) -> u64 {
         match self.include_end {
             true => self.end-self.start+1,
             false => self.end-self.start
         }
     }
     #[inline]
-    pub fn start(&self) -> u64 {
+    pub const fn start(&self) -> u64 {
         self.start
     }
     #[inline]
-    pub fn end(&self) -> u64 {
+    pub const fn end(&self) -> u64 {
         self.end
     }
     #[inline]
-    pub fn include_end(&self) -> bool {
+    pub const fn include_end(&self) -> bool {
         self.include_end
     }
 }
