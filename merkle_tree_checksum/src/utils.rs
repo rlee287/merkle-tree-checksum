@@ -8,6 +8,8 @@ use std::fmt;
 use crate::error_types::HeaderParsingErr;
 use crate::parse_functions::size_str_to_num;
 
+use strum_macros::{EnumString, EnumVariantNames, FromRepr};
+
 use digest::Digest;
 use crate::crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
@@ -40,37 +42,39 @@ impl<T> StoredAndComputed<T> {
 }
 impl<T: Copy> Copy for StoredAndComputed<T> {}
 
-arg_enum!{
-    #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-    #[allow(non_camel_case_types)]
-    #[repr(u8)]
-    /*
-     * Encoding choices:
-     * - val & 0x80 = 0x80 if cryptographic, 0 otherwise
-     * - val & 0x40 = 0x40 if recommended for use, 0 otherwise
-     * - val & 0x20 bit reserved as a future bitflag
-     * - val & 0x1f is counter to distinguish individual hashes
-     */
-    // Stability: do not change these values once committed
-    pub enum HashFunctions {
-        crc32 = 0x40,
-        // For sha2 family: set bit 0x04 to indicate sha512 base
-        sha224 = 0xc0,
-        sha256 = 0xc1,
-        sha384 = 0xc4,
-        sha512 = 0xc5,
-        sha512trunc224 = 0xc6,
-        sha512trunc256 = 0xc7,
-        sha3_224 = 0xc8,
-        sha3_256 = 0xc9,
-        sha3_384 = 0xca,
-        sha3_512 = 0xcb,
-        blake2b = 0xcc,
-        blake2s = 0xcd,
-        blake3 = 0xce
-    }
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(EnumString, EnumVariantNames, FromRepr, strum_macros::Display)]
+#[allow(non_camel_case_types)]
+#[repr(u8)]
+/*
+    * Encoding choices:
+    * - val & 0x80 = 0x80 if cryptographic, 0 otherwise
+    * - val & 0x40 = 0x40 if recommended for use, 0 otherwise
+    * - val & 0x20 bit reserved as a future bitflag
+    * - val & 0x1f is counter to distinguish individual hashes
+    */
+// Stability: do not change these values once committed
+pub enum HashFunctions {
+    crc32 = 0x40,
+    // For sha2 family: set bit 0x04 to indicate sha512 base
+    sha224 = 0xc0,
+    sha256 = 0xc1,
+    sha384 = 0xc4,
+    sha512 = 0xc5,
+    #[strum(to_string = "sha512_224", serialize = "sha512trunc224")]
+    sha512_224 = 0xc6,
+    #[strum(to_string = "sha512_256", serialize = "sha512trunc256")]
+    sha512_256 = 0xc7,
+    sha3_224 = 0xc8,
+    sha3_256 = 0xc9,
+    sha3_384 = 0xca,
+    sha3_512 = 0xcb,
+    blake2b = 0xcc,
+    blake2s = 0xcd,
+    blake3 = 0xce
 }
 
+// Modified from https://stackoverflow.com/a/68025464
 type HashFunctionFromUIntErr = ();
 impl HashFunctions {
     #[inline]
@@ -81,8 +85,8 @@ impl HashFunctions {
             HashFunctions::sha256 => Sha256::output_size(),
             HashFunctions::sha384 => Sha384::output_size(),
             HashFunctions::sha512 => Sha512::output_size(),
-            HashFunctions::sha512trunc224 => Sha512Trunc224::output_size(),
-            HashFunctions::sha512trunc256 => Sha512Trunc256::output_size(),
+            HashFunctions::sha512_224 => Sha512Trunc224::output_size(),
+            HashFunctions::sha512_256 => Sha512Trunc256::output_size(),
             HashFunctions::sha3_224 => Sha3_224::output_size(),
             HashFunctions::sha3_256 => Sha3_256::output_size(),
             HashFunctions::sha3_384 => Sha3_384::output_size(),
@@ -103,33 +107,22 @@ impl From<HashFunctions> for u8 {
 impl TryFrom<u8> for HashFunctions {
     type Error = HashFunctionFromUIntErr;
     fn try_from(val: u8) -> Result<Self, <Self as TryFrom<u8>>::Error> {
-        match val {
-            0x40 => Ok(HashFunctions::crc32),
-            0xc0 => Ok(HashFunctions::sha224),
-            0xc1 => Ok(HashFunctions::sha256),
-            0xc4 => Ok(HashFunctions::sha384),
-            0xc5 => Ok(HashFunctions::sha512),
-            0xc6 => Ok(HashFunctions::sha512trunc224),
-            0xc7 => Ok(HashFunctions::sha512trunc256),
-            0xc8 => Ok(HashFunctions::sha3_224),
-            0xc9 => Ok(HashFunctions::sha3_256),
-            0xca => Ok(HashFunctions::sha3_384),
-            0xcb => Ok(HashFunctions::sha3_512),
-            0xcc => Ok(HashFunctions::blake2b),
-            0xcd => Ok(HashFunctions::blake2s),
-            0xce => Ok(HashFunctions::blake3),
-            _ => Err(())
-        }
+        Self::from_repr(val).ok_or(Self::Error::default())
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(EnumString, strum_macros::Display)]
+// Don't use strum(ascii_case_insensitive) because we only accept two types
 pub(crate) enum HeaderElement {
+    #[strum(to_string = "Block size", serialize = "block size")]
     BlockSize,
+    #[strum(to_string = "Branching factor", serialize = "branch factor")]
     BranchFactor,
+    #[strum(to_string = "Hash function", serialize = "hash function")]
     HashFunction
 }
-type HeaderElementFromStrErr = ();
+/*type HeaderElementFromStrErr = ();
 impl FromStr for HeaderElement {
     type Err = HeaderElementFromStrErr;
     fn from_str(string: &str) -> Result<Self, Self::Err> {
@@ -149,7 +142,7 @@ impl fmt::Display for HeaderElement {
             Self::HashFunction => write!(fmt, "Hash function")
         }
     }
-}
+}*/
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TreeParams {
@@ -267,26 +260,19 @@ pub(crate) fn str_to_files(file_str: &OsStr) -> Option<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::TryFrom;
     use std::str::FromStr;
 
+    // Specifically test backwards compatibility here
+    // The rest are OK, assuming strum isn't broken
     #[test]
-    fn enum_u8_roundtrip() {
-        let enum_arr = HashFunctions::variants();
-        for enum_variant_name in enum_arr {
-            let enum_variant = HashFunctions::from_str(enum_variant_name).unwrap();
-            let enum_as_u8 = u8::from(enum_variant);
-            let u8_enum_roundtrip = HashFunctions::try_from(enum_as_u8);
-            assert_eq!(Ok(enum_variant), u8_enum_roundtrip);
-        }
-    }
-    #[test]
-    fn enum_header_roundtrip() {
-        let enum_arr = [HeaderElement::BlockSize, HeaderElement::BranchFactor, HeaderElement::HashFunction];
-        for enum_variant in enum_arr {
-            let enum_variant_name = format!("{}", enum_variant);
-            let enum_roundtrip = HeaderElement::from_str(&enum_variant_name);
-            assert_eq!(Ok(enum_variant), enum_roundtrip);
-        }
+    fn hash_enum_sha512trunc_backcompat() {
+        assert_eq!(HashFunctions::from_str("sha512trunc224").unwrap(),
+            HashFunctions::sha512_224);
+        assert_eq!(HashFunctions::from_str("sha512trunc256").unwrap(),
+            HashFunctions::sha512_256);
+        assert_eq!(HashFunctions::from_str("sha512_224").unwrap(),
+            HashFunctions::sha512_224);
+        assert_eq!(HashFunctions::from_str("sha512_256").unwrap(),
+            HashFunctions::sha512_256);
     }
 }

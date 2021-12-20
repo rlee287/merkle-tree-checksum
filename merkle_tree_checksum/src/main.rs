@@ -41,6 +41,7 @@ use utils::TreeParams;
 use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 
 use std::convert::TryFrom;
+use strum::VariantNames;
 
 use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle,
@@ -96,7 +97,7 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
         .after_help(&*gen_hash_after_help)
         .arg(Arg::with_name("hash").long("hash-function").short("f")
             .takes_value(true)
-            .default_value("sha256").possible_values(&HashFunctions::variants())
+            .default_value("sha256").possible_values(&HashFunctions::VARIANTS)
             .hide_possible_values(true)
             .case_insensitive(true)
             .help("Hash function to use"))
@@ -262,7 +263,7 @@ fn run() -> i32 {
             match parse_functions::parse_version_line(&version_line) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
-                    let range_str = concat!("~","0.5");
+                    let range_str = ">=0.5, <0.7";
                     let recognized_range = VersionReq::parse(range_str).unwrap();
                     if !recognized_range.matches(&version) {
                         eprintln!("Error: hash file has unsupported version {}", version);
@@ -466,9 +467,9 @@ fn run() -> i32 {
             merkle_hash_file::<_,Sha384,_>,
         HashFunctions::sha512 =>
             merkle_hash_file::<_,Sha512,_>,
-        HashFunctions::sha512trunc224 =>
+        HashFunctions::sha512_224 =>
             merkle_hash_file::<_,Sha512Trunc224,_>,
-        HashFunctions::sha512trunc256 =>
+        HashFunctions::sha512_256 =>
             merkle_hash_file::<_,Sha512Trunc256,_>,
         HashFunctions::sha3_224 => merkle_hash_file::<_,Sha3_224,_>,
         HashFunctions::sha3_256 => merkle_hash_file::<_,Sha3_256,_>,

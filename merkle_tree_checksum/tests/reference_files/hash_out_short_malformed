@@ -1,4 +1,4 @@
-merkle_tree_checksum v0.5.1
+merkle_tree_checksum v0.6.0
 Hash function: sha256
 Block size: 4
 Branching factor: 4
