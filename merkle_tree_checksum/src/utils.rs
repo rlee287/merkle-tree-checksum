@@ -74,8 +74,15 @@ pub enum HashFunctions {
     blake3 = 0xce
 }
 
-// Modified from https://stackoverflow.com/a/68025464
-type HashFunctionFromUIntErr = ();
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HashFunctionFromUIntErr(u8);
+impl fmt::Display for HashFunctionFromUIntErr {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(fmt, "Invalid hash id {:#02x}", self.0)
+    }
+}
+impl std::error::Error for HashFunctionFromUIntErr {}
+
 impl HashFunctions {
     #[inline]
     pub fn hash_len(&self) -> usize {
@@ -107,7 +114,7 @@ impl From<HashFunctions> for u8 {
 impl TryFrom<u8> for HashFunctions {
     type Error = HashFunctionFromUIntErr;
     fn try_from(val: u8) -> Result<Self, <Self as TryFrom<u8>>::Error> {
-        Self::from_repr(val).ok_or(Self::Error::default())
+        Self::from_repr(val).ok_or(HashFunctionFromUIntErr(val))
     }
 }
 
@@ -122,27 +129,6 @@ pub(crate) enum HeaderElement {
     #[strum(to_string = "Hash function", serialize = "hash function")]
     HashFunction
 }
-/*type HeaderElementFromStrErr = ();
-impl FromStr for HeaderElement {
-    type Err = HeaderElementFromStrErr;
-    fn from_str(string: &str) -> Result<Self, Self::Err> {
-        match string {
-            "Block size" | "block size" => Ok(Self::BlockSize),
-            "Branching factor" | "branch factor" => Ok(Self::BranchFactor),
-            "Hash function" | "hash function" => Ok(Self::HashFunction),
-            _ => Err(())
-        }
-    }
-}
-impl fmt::Display for HeaderElement {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::BlockSize => write!(fmt, "Block size"),
-            Self::BranchFactor => write!(fmt, "Branching factor"),
-            Self::HashFunction => write!(fmt, "Hash function")
-        }
-    }
-}*/
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TreeParams {
