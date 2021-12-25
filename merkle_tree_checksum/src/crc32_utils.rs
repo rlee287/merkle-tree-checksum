@@ -2,9 +2,7 @@
 #![forbid(unsafe_code)]
 
 use crc32fast::Hasher as Crc32Hasher;
-use std::hash::Hasher as HasherTrait;
-use std::convert::TryInto;
-use digest::{impl_write, FixedOutput, Update, Reset};
+use digest::{FixedOutput, OutputSizeUser, Update, Reset, HashMarker};
 use generic_array::typenum::U4;
 use generic_array::GenericArray;
 
@@ -31,27 +29,23 @@ pub struct Crc32(Crc32Hasher);
         Self(Hasher::new_with_initial(state))
     }
 }*/
+impl OutputSizeUser for Crc32 {
+    type OutputSize = U4;
+}
+impl HashMarker for Crc32 {}
 
 impl FixedOutput for Crc32 {
-    type OutputSize = U4;
-
     #[inline]
     fn finalize_into(self, out: &mut GenericArray<u8, Self::OutputSize>) {
         let result = self.0.finalize();
         out.copy_from_slice(&result.to_be_bytes());
     }
-    fn finalize_into_reset(&mut self, out: &mut GenericArray<u8, Self::OutputSize>) {
-        // Finish of crc32 was upcast from u32 to u64, so downcast is fine
-        let result: u32 = self.0.finish().try_into().unwrap();
-        out.copy_from_slice(&result.to_be_bytes());
-        self.0.reset();
-    }
 }
 
 impl Update for Crc32 {
     #[inline]
-    fn update(&mut self, data: impl AsRef<[u8]>) {
-        self.0.update(data.as_ref());
+    fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
     }
 }
 
@@ -62,4 +56,4 @@ impl Reset for Crc32 {
     }
 }
 
-impl_write!(Crc32);
+//impl_write!(Crc32);

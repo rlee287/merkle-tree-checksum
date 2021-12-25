@@ -9,7 +9,7 @@ use std::io::SeekFrom;
 use std::convert::TryInto;
 use num_iter::range_step;
 
-use digest::Digest;
+use digest::{Digest, OutputSizeUser};
 use generic_array::GenericArray;
 
 use merkle_utils::*;
@@ -85,7 +85,7 @@ where
     return Some(hash_out.0.to_vec().into_boxed_slice());
 }
 
-type HashArray<T> = GenericArray<u8, <T as Digest>::OutputSize>;
+type HashArray<T> = GenericArray<u8, <T as OutputSizeUser>::OutputSize>;
 type HashResult<T> = Result<(HashArray<T>, u64), HelperErrSignal>;
 // TODO: static checking with https://github.com/project-oak/rust-verification-tools
 // Block range includes the first and excludes the last
