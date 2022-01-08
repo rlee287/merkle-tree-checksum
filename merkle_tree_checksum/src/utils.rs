@@ -15,7 +15,7 @@ use crate::crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use blake2::{Blake2b512, Blake2s256};
-//use blake3::Hasher as Blake3;
+use blake3::Hasher as Blake3;
 use merkle_tree::{block_t, branch_t};
 
 use std::ffi::OsStr;
@@ -73,7 +73,7 @@ pub enum HashFunctions {
     blake2b_512 = 0xcc,
     #[strum(to_string = "blake2s256", serialize = "blake2s")]
     blake2s_256 = 0xcd,
-    //blake3 = 0xce
+    blake3 = 0xce
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,7 +102,7 @@ impl HashFunctions {
             HashFunctions::sha3_512 => Sha3_512::output_size(),
             HashFunctions::blake2b_512 => Blake2b512::output_size(),
             HashFunctions::blake2s_256 => Blake2s256::output_size(),
-            //HashFunctions::blake3 => Blake3::output_size()
+            HashFunctions::blake3 => Blake3::output_size()
         }
     }
 }

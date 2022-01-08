@@ -28,7 +28,7 @@ use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use blake2::{Blake2b512, Blake2s256};
-//use blake3::Hasher as Blake3;
+use blake3::Hasher as Blake3;
 
 use merkle_tree::{merkle_hash_file, merkle_block_generator};
 use merkle_tree::HashRange;
@@ -477,7 +477,7 @@ fn run() -> i32 {
         HashFunctions::sha3_512 => merkle_hash_file::<_,Sha3_512,_>,
         HashFunctions::blake2b_512 => merkle_hash_file::<_,Blake2b512,_>,
         HashFunctions::blake2s_256 => merkle_hash_file::<_,Blake2s256,_>,
-        //HashFunctions::blake3 => merkle_hash_file::<_,Blake3,_>
+        HashFunctions::blake3 => merkle_hash_file::<_,Blake3,_>
     };
     let expected_hash_len = hash_enum.hash_len();
 
