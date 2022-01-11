@@ -24,13 +24,13 @@ strum = "0.23"
 strum_macros = "0.23" # We import this too
 
 #crc32-digest uses an outdated version of the Digest trait
-digest = "0.9"
+digest = "0.10"
 generic-array = "0.14"
 crc32fast = "1.2"
-sha2 = { version = "0.9", features = ["asm"] }
-sha3 = "0.9"
-blake2 = { version = "0.9" }
-blake3 = { version = "1.2", features = ["traits-preview"] }
+sha2 = { version = "0.10", features = ["asm"] }
+sha3 = "0.10"
+blake2 = { version = "0.10" }
+blake3 = { version = "1.3", features = ["traits-preview"] }
 # = to be extra careful with backwards-compatibility
 merkle_tree = { version = "=0.4.1", path = "../merkle_tree"}
 

@@ -8,14 +8,14 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-digest = "0.9"
+digest = "0.10"
 generic-array = "0.14"
 num-iter = "0.1"
 lazy_static = "1.4"
 # The more popular "generator" library has potential unsoundness issues
 # Prefering genawaiter with more documentation and no stack-switch shenanigans
 genawaiter = {version = "0.99", default-features = false}
-async-recursion = "0.3"
+async-recursion = "1.0"
 
 crossbeam-channel = "0.5"
 [dependencies.oneshot]
@@ -29,6 +29,6 @@ default-features = false
 features = ["std"]
 
 [dev-dependencies]
-sha2 = "0.9"
+sha2 = "0.10"
 permutohedron = "0.2"
 merkle_tree_test_utils = {version = "=0.1.0", path = "../merkle_tree_test_utils"}

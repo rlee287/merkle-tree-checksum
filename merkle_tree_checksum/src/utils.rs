@@ -12,9 +12,9 @@ use strum_macros::{EnumString, EnumVariantNames, FromRepr};
 
 use digest::Digest;
 use crate::crc32_utils::Crc32;
-use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512Trunc224, Sha512Trunc256};
+use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
-use blake2::{Blake2b, Blake2s};
+use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3;
 use merkle_tree::{block_t, branch_t};
 
@@ -69,8 +69,10 @@ pub enum HashFunctions {
     sha3_256 = 0xc9,
     sha3_384 = 0xca,
     sha3_512 = 0xcb,
-    blake2b = 0xcc,
-    blake2s = 0xcd,
+    #[strum(to_string = "blake2b512", serialize = "blake2b")]
+    blake2b_512 = 0xcc,
+    #[strum(to_string = "blake2s256", serialize = "blake2s")]
+    blake2s_256 = 0xcd,
     blake3 = 0xce
 }
 
@@ -92,14 +94,14 @@ impl HashFunctions {
             HashFunctions::sha256 => Sha256::output_size(),
             HashFunctions::sha384 => Sha384::output_size(),
             HashFunctions::sha512 => Sha512::output_size(),
-            HashFunctions::sha512_224 => Sha512Trunc224::output_size(),
-            HashFunctions::sha512_256 => Sha512Trunc256::output_size(),
+            HashFunctions::sha512_224 => Sha512_224::output_size(),
+            HashFunctions::sha512_256 => Sha512_256::output_size(),
             HashFunctions::sha3_224 => Sha3_224::output_size(),
             HashFunctions::sha3_256 => Sha3_256::output_size(),
             HashFunctions::sha3_384 => Sha3_384::output_size(),
             HashFunctions::sha3_512 => Sha3_512::output_size(),
-            HashFunctions::blake2b => Blake2b::output_size(),
-            HashFunctions::blake2s => Blake2s::output_size(),
+            HashFunctions::blake2b_512 => Blake2b512::output_size(),
+            HashFunctions::blake2s_256 => Blake2s256::output_size(),
             HashFunctions::blake3 => Blake3::output_size()
         }
     }
