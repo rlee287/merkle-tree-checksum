@@ -1,0 +1,28 @@
+merkle_tree_checksum [..]
+rlee287 <rlee287@yahoo.com>
+Computes a Merkle Tree hash over the given files
+
+USAGE:
+    merkle_tree_checksum [OPTIONS] <SUBCOMMAND>
+
+OPTIONS:
+    -h, --help           
+            Prints help information
+
+    -j, --jobs <jobs>    
+            Specify size of thread pool for hashing. It is recommended to leave at least one CPU free for the main
+            thread to read/write hashes. Adding more than 2 threads does not improve performance when I/O is the program
+            bottleneck. [default: 4]
+    -q, --quiet          
+            Specify once to hide progress bars. Specify twice to suppress all output besides errors.
+
+    -V, --version        
+            Prints version information
+
+
+SUBCOMMANDS:
+    generate-hash    Generates Merkle tree hashes
+    help             Prints this message or the help of the given subcommand(s)
+    verify-hash      Verify Merkle tree hashes
+
+Supported hash functions are the SHA2 family, the SHA3 family, Blake2b/Blake2s, Blake3, and CRC32.
