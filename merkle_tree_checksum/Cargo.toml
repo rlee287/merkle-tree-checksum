@@ -17,7 +17,7 @@ semver = "1.0"
 hex = "0.4"
 lazy_static = "1.4"
 # Enabling proc-macro pulls in too many dependencies
-cached = { version = "0.26", default-features = false}
+cached = { version = "0.30", default-features = false}
 crossbeam-channel = "0.5"
 git-version = "0.3"
 strum = "0.23"
@@ -51,7 +51,7 @@ rustc_version = "0.4"
 
 [dev-dependencies]
 assert_cmd = "2.0"
-trycmd = "0.9"
+trycmd = "0.12"
 # Needed to allow imports
 predicates = {version = "2.0", default-features = false}
 serial_test = "0.5"
