@@ -64,27 +64,20 @@ impl FnEvaluator for DummyEvaluator {
 #[derive(Debug)]
 pub(crate) struct ThreadPoolEvaluator {
     thread_handles: Vec<Option<thread::JoinHandle<()>>>,
-    send_fn: Option<Sender<Box<dyn FnOnce()->() + Send>>>
+    send_fn: Option<Sender<Box<dyn FnOnce() + Send>>>
     //threads_active: AtomicUsize
 }
 impl ThreadPoolEvaluator {
     pub fn new(name: String, thread_count: usize) -> ThreadPoolEvaluator {
         let mut handle_vec = Vec::with_capacity(thread_count);
-        let (tx, rx) = unbounded::<Box<dyn FnOnce()->() + Send>>();
+        let (tx, rx) = unbounded::<Box<dyn FnOnce() + Send>>();
         for i in 0..thread_count {
             let rx_copy = rx.clone();
             handle_vec.push(Some(thread::Builder::new()
                 .name(format!("{}-{}", name, i))
                 .spawn(move || {
-                    loop {
-                        match rx_copy.recv() {
-                            Ok(func) => {
-                                func();
-                            },
-                            Err(_) => {
-                                break;
-                            }
-                        }
+                    while let Ok(func) = rx_copy.recv() {
+                        func();
                     }
                 })
             .unwrap()))

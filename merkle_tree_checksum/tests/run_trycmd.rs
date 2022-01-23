@@ -4,13 +4,13 @@ use std::path::PathBuf;
 
 use scopeguard::defer;
 
-const HASH_FUNCTION_LIST: &[&'static str] = &["crc32",
+const HASH_FUNCTION_LIST: &[&str] = &["crc32",
     "sha224", "sha256", "sha384", "sha512" ,"sha512_224", "sha512_256",
     "sha3_224", "sha3_256", "sha3_384", "sha3_512",
     "blake2b512", "blake2s256",
     "blake3"];
 
-const INPUT_FILE_LIST: &[&'static str] =
+const INPUT_FILE_LIST: &[&str] =
     &["16_byte_file", "20_byte_file", "empty_file"];
 
 const GEN_REF_TEMPLATE: &str =

@@ -27,7 +27,7 @@ fn test_blockrange_str_roundtrip() {
 fn test_blockrange_bad_str() {
     let blockranges_str_bad = vec!["[034, 0x2124]", "[0x356, 9768)", "garbage"];
     for bad_str in blockranges_str_bad {
-        let recovered_obj = BlockRange::from_str(&bad_str);
+        let recovered_obj = BlockRange::from_str(bad_str);
         assert!(recovered_obj.is_err());
     }
 }

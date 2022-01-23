@@ -112,7 +112,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         .arg(Arg::new("blocksize").long("block-length").short('l')
             .takes_value(true).default_value("4096")
             .validator(|input_str| -> Result<(), String> {
-                match size_str_to_num(&input_str) {
+                match size_str_to_num(input_str) {
                     Some(0) => Err("blocksize must be positive".to_owned()),
                     Some(_) => Ok(()),
                     None => Err("blocksize is invalid".to_owned())
