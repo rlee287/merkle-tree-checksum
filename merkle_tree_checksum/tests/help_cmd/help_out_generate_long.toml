@@ -1,0 +1,4 @@
+bin.name = "merkle_tree_checksum"
+args = "generate-hash --help"
+status.code = 1
+fs.sandbox = true

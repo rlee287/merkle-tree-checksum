@@ -1,0 +1,18 @@
+merkle_tree_checksum-verify-hash 
+Verify Merkle tree hashes
+
+USAGE:
+    merkle_tree_checksum verify-hash [OPTIONS] <FILE>
+
+OPTIONS:
+        --fail-fast    
+            Skip checking the rest of the files when a hash mismatch is detected.
+
+    -h, --help         
+            Prints help information
+
+
+ARGS:
+    <FILE>    
+            File containing the hashes to check
+

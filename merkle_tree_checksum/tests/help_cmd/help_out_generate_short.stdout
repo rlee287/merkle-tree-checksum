@@ -1,0 +1,21 @@
+merkle_tree_checksum-generate-hash 
+Generates Merkle tree hashes
+
+USAGE:
+    merkle_tree_checksum generate-hash [OPTIONS] --output <output> [--] <FILES>...
+
+OPTIONS:
+    -l, --block-length <blocksize>    Block size to hash over, in bytes [default: 4096]
+    -b, --branch-factor <branch>      Branch factor for tree [default: 4]
+    -f, --hash-function <hash>        Hash function to use [default: sha256]
+    -h, --help                        Prints help information
+    -o, --output <output>             Output file
+        --overwrite                   Overwrite output file if it already exists
+    -s, --short                       Write only the summary hash
+
+ARGS:
+    <FILES>...    
+
+Supported hash functions are the SHA2 family, the SHA3 family, Blake2b/Blake2s, Blake3, and CRC32. sha512-based hashes
+(sha384, sha512, sha512trunc224, and sha512trunc256) can be significantly faster than sha256-based hashes (sha224 and
+sha256) on 64-bit systems that lack SHA hardware acceleration.
