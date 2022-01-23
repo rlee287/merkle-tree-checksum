@@ -26,14 +26,14 @@ fs.sandbox = true"#;
 const SKIP_CLEANUP: bool = false;
 
 #[test]
-fn gen_ref_tests() {
+fn gen_ref_cmd_tests() {
     for hash_func in HASH_FUNCTION_LIST {
-        let mut toml_file = File::create(format!("tests/gen_ref/{}_gen_ref.toml",hash_func)).unwrap();
+        let mut toml_file = File::create(format!("tests/gen_ref_cmd/{}_gen_ref.toml",hash_func)).unwrap();
         write!(toml_file, "{}", GEN_REF_TEMPLATE.replace("HASH_FUNC", hash_func)).unwrap();
     }
     let in_directories: Vec<PathBuf> = HASH_FUNCTION_LIST.iter()
         .map(|func| {
-            PathBuf::from(format!("tests/gen_ref/{}_gen_ref.in", func))
+            PathBuf::from(format!("tests/gen_ref_cmd/{}_gen_ref.in", func))
         })
         .collect();
     for in_dir in in_directories.iter() {
@@ -52,25 +52,25 @@ fn gen_ref_tests() {
                 fs::remove_dir_all(in_dir).unwrap();
             }
             for hash_func in HASH_FUNCTION_LIST {
-                fs::remove_file(format!("tests/gen_ref/{}_gen_ref.toml",hash_func)).unwrap();
+                fs::remove_file(format!("tests/gen_ref_cmd/{}_gen_ref.toml",hash_func)).unwrap();
             }
         }
     }
 
     trycmd::TestCases::new()
-        .case("tests/gen_ref/*_gen_ref.toml");
+        .case("tests/gen_ref_cmd/*_gen_ref.toml");
 
 }
 #[test]
 //#[ignore]
 fn verify_tests() {
     for hash_func in HASH_FUNCTION_LIST {
-        let mut toml_file = File::create(format!("tests/verify/{}_verify.toml",hash_func)).unwrap();
+        let mut toml_file = File::create(format!("tests/verify_cmd/{}_verify.toml",hash_func)).unwrap();
         write!(toml_file, "{}", VERIFY_TOML).unwrap();
     }
     let in_directories: Vec<PathBuf> = HASH_FUNCTION_LIST.iter()
         .map(|func| {
-            PathBuf::from(format!("tests/verify/{}_verify.in", func))
+            PathBuf::from(format!("tests/verify_cmd/{}_verify.in", func))
         })
         .collect();
     // Do not create and remove directories because we preserve hash_out
@@ -93,13 +93,13 @@ fn verify_tests() {
                 }
             }
             for hash_func in HASH_FUNCTION_LIST {
-                fs::remove_file(format!("tests/verify/{}_verify.toml",hash_func)).unwrap();
+                fs::remove_file(format!("tests/verify_cmd/{}_verify.toml",hash_func)).unwrap();
             }
         }
     }
 
     trycmd::TestCases::new()
-        .case("tests/verify/*_verify.toml");
+        .case("tests/verify_cmd/*_verify.toml");
 }
 
 #[test]
