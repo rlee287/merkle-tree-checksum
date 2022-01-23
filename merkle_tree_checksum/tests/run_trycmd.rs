@@ -62,8 +62,29 @@ fn gen_ref_cmd_tests() {
 
 }
 #[test]
-//#[ignore]
-fn verify_tests() {
+fn gen_ref_short_cmd_tests() {
+    // We're only doing sha256 for now; update if doing parametric generation
+    let in_dir = PathBuf::from("tests/gen_ref_short_cmd/sha256_gen_ref_short.in");
+    fs::create_dir(&in_dir).unwrap();
+    for input_file in INPUT_FILE_LIST {
+        let mut dest_path = in_dir.clone();
+        dest_path.extend(&[input_file]);
+
+        fs::copy(format!("tests/reference_files/{}", input_file),
+        dest_path).unwrap();
+    }
+    defer! {
+        if !SKIP_CLEANUP {
+            fs::remove_dir_all(in_dir).unwrap();
+        }
+    }
+
+    trycmd::TestCases::new()
+        .case("tests/gen_ref_short_cmd/sha256_gen_ref_short.toml");
+}
+
+#[test]
+fn verify_cmd_tests() {
     for hash_func in HASH_FUNCTION_LIST {
         let mut toml_file = File::create(format!("tests/verify_cmd/{}_verify.toml",hash_func)).unwrap();
         write!(toml_file, "{}", VERIFY_TOML).unwrap();
