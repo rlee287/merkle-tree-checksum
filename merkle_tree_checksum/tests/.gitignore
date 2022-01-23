@@ -3,3 +3,4 @@
 !help_out_*.toml
 # For now
 !gen_ref_short_cmd/sha256_gen_ref_short.toml
+!verify_short_cmd/sha256_verify_short.toml
