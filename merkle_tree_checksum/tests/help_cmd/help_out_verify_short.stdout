@@ -4,9 +4,9 @@ Verify Merkle tree hashes
 USAGE:
     merkle_tree_checksum verify-hash [OPTIONS] <FILE>
 
-OPTIONS:
-        --fail-fast    Bail immediately on hash mismatch
-    -h, --help         Prints help information
-
 ARGS:
     <FILE>    File containing the hashes to check
+
+OPTIONS:
+        --fail-fast    Bail immediately on hash mismatch
+    -h, --help         Print help information

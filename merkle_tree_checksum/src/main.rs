@@ -15,7 +15,6 @@ use std::thread;
 use crossbeam_channel::unbounded as unbounded_channel;
 
 use std::fs::{File, OpenOptions};
-use std::ffi::OsString;
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
@@ -43,7 +42,7 @@ use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 use std::convert::TryFrom;
 use strum::VariantNames;
 
-use clap::{App, AppSettings, Arg, SubCommand, ArgMatches};
+use clap::{App, AppSettings, Arg, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle,
     ProgressDrawTarget, MultiProgress};
 use git_version::git_version;
@@ -80,7 +79,7 @@ fn main() {
     std::process::exit(status_code);
 }
 
-fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
+fn parse_cli() -> Result<ArgMatches, clap::Error> {
     let gen_hash_after_help = HELP_STR_HASH_LIST.to_owned()
         +concat!(" sha512-based hashes ",
         "(sha384, sha512, sha512trunc224, and sha512trunc256) ",
@@ -91,17 +90,16 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             git_version!(prefix = "git:", fallback = "unknown"),
             env!("RUSTC_VERSION_STR"));
 
-    let gen_hash_command = SubCommand::with_name(GENERATE_HASH_CMD_NAME)
+    let gen_hash_command = App::new(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
-        .setting(AppSettings::UnifiedHelpMessage)
         .after_help(&*gen_hash_after_help)
-        .arg(Arg::with_name("hash").long("hash-function").short("f")
+        .arg(Arg::new("hash").long("hash-function").short('f')
             .takes_value(true)
-            .default_value("sha256").possible_values(&HashFunctions::VARIANTS)
+            .default_value("sha256").possible_values(HashFunctions::VARIANTS)
             .hide_possible_values(true)
-            .case_insensitive(true)
+            .ignore_case(true)
             .help("Hash function to use"))
-        .arg(Arg::with_name("branch").long("branch-factor").short("b")
+        .arg(Arg::new("branch").long("branch-factor").short('b')
             .takes_value(true).default_value("4")
             .validator(|input_str| -> Result<(), String> {
                 match input_str.parse::<branch_t>() {
@@ -111,7 +109,7 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
                 }
             })
             .help("Branch factor for tree"))
-        .arg(Arg::with_name("blocksize").long("block-length").short("l")
+        .arg(Arg::new("blocksize").long("block-length").short('l')
             .takes_value(true).default_value("4096")
             .validator(|input_str| -> Result<(), String> {
                 match size_str_to_num(&input_str) {
@@ -123,25 +121,26 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             .help("Block size to hash over, in bytes")
             .long_help(concat!("Block size to hash over, in bytes ",
                 "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
-        .arg(Arg::with_name("output").long("output").short("o")
+        .arg(Arg::new("output").long("output").short('o')
             .takes_value(true).required(true)
             .help("Output file"))
-        .arg(Arg::with_name("overwrite").long("overwrite")
+        .arg(Arg::new("overwrite").long("overwrite")
             .help("Overwrite output file if it already exists"))
-        .arg(Arg::with_name("short").long("short").short("s")
+        .arg(Arg::new("short").long("short").short('s')
             .help("Write only the summary hash")
             .long_help(concat!("Write only the summary hash to the output. ",
                 "This will make identifying corrupted locations impossible.")))
-        .arg(Arg::with_name("FILES").required(true).last(true)
-            .multiple(true).max_values(u16::MAX.into()));
-    let check_hash_command = SubCommand::with_name(VERIFY_HASH_CMD_NAME)
+        .arg(Arg::new("FILES").required(true)
+            .takes_value(true).last(true)
+            .multiple_values(true).max_values(u16::MAX.into())
+            .help("Files to hash"));
+    let check_hash_command = App::new(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
-        .setting(AppSettings::UnifiedHelpMessage)
-        .arg(Arg::with_name("failfast").long("fail-fast")
+        .arg(Arg::new("failfast").long("fail-fast")
             .help("Bail immediately on hash mismatch")
             .long_help(concat!("Skip checking the rest of the files ",
                 "when a hash mismatch is detected.")))
-        .arg(Arg::with_name("FILE").required(true)
+        .arg(Arg::new("FILE").required(true)
             .help("File containing the hashes to check"));
 
     let clap_app = App::new(crate_name!())
@@ -150,14 +149,12 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
         .about(crate_description!())
         .after_help(HELP_STR_HASH_LIST)
         .setting(AppSettings::SubcommandRequired)
-        .setting(AppSettings::VersionlessSubcommands)
-        .setting(AppSettings::UnifiedHelpMessage)
-        .arg(Arg::with_name("quiet").long("quiet").short("q")
-            .multiple(true)
+        .arg(Arg::new("quiet").long("quiet").short('q')
+            .multiple_occurrences(true)
             .help("Print less text")
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
-        .arg(Arg::with_name("jobs").long("jobs").short("j")
+        .arg(Arg::new("jobs").long("jobs").short('j')
             .takes_value(true).default_value("4")
             .validator(|input_str| -> Result<(), String> {
                 match input_str.parse::<usize>() {
@@ -175,38 +172,34 @@ fn parse_cli<'a>() -> Result<ArgMatches<'a>, clap::Error> {
             )))
         .subcommand(gen_hash_command)
         .subcommand(check_hash_command);
-    clap_app.get_matches_safe()
+    clap_app.try_get_matches()
 }
 
 fn run() -> i32 {
     let matches_result = parse_cli();
     if let Err(e) = matches_result {
         // Mirror e.exit, but use scoping to call destructors
-        if e.use_stderr() {
-            eprintln!("{}", e.message);
-        } else {
-            println!("{}", e.message);
-        }
+        e.print().expect("Failed to print CMD parse error");
         return CMDLINE_ERR;
     }
     let matches = matches_result.unwrap();
 
     let (mut cmd_chosen, cmd_matches): (HashCommand<_,_>, ArgMatches)
             = match matches.subcommand() {
-        (GENERATE_HASH_CMD_NAME, Some(gencmd_matches)) => 
+        Some((GENERATE_HASH_CMD_NAME, gencmd_matches)) => 
                 (HashCommand::GenerateHash(None), gencmd_matches.clone()),
-        (VERIFY_HASH_CMD_NAME, Some(verify_matches)) =>
+        Some((VERIFY_HASH_CMD_NAME, verify_matches)) =>
                 (HashCommand::VerifyHash(None), verify_matches.clone()),
-        (_, _) => panic!("Invalid subcommand detected")
+        _ => panic!("Invalid or missing subcommand detected")
     };
 
     let mut hashing_final_status = 0;
 
     let (file_list_result, tree_params, short_output, verify_start_pos):
-            (Vec<(OsString, Option<PreHashError>)>, TreeParams, bool, Option<u64>)
+            (Vec<(String, Option<PreHashError>)>, TreeParams, bool, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash(None) => {
-            let file_vec: Vec<_> = cmd_matches.values_of_os("FILES").unwrap().collect();
+            let file_vec: Vec<_> = cmd_matches.values_of("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
                 {
@@ -217,8 +210,8 @@ fn run() -> i32 {
                             Some(paths) => {
                                 for path in paths {
                                     match File::open(&path) {
-                                        Ok(_) => collect_vec.push((path.into_os_string(), None)),
-                                        Err(_) => collect_vec.push((path.into_os_string(), Some(PreHashError::ReadPermissionError)))
+                                        Ok(_) => collect_vec.push((path.to_string_lossy().into_owned(), None)),
+                                        Err(_) => collect_vec.push((path.to_string_lossy().into_owned(), Some(PreHashError::ReadPermissionError)))
                                     }
                                 }
                             },
@@ -231,9 +224,9 @@ fn run() -> i32 {
                 TreeParams {
                     block_size: size_str_to_num(
                         cmd_matches.value_of("blocksize").unwrap()).unwrap(),
-                    branch_factor: value_t!(cmd_matches, "branch", branch_t)
+                    branch_factor: cmd_matches.value_of_t("branch")
                         .unwrap_or_else(|e| e.exit()),
-                    hash_function: value_t!(cmd_matches, "hash", HashFunctions)
+                    hash_function: cmd_matches.value_of_t("hash")
                         .unwrap_or_else(|e| e.exit())
                 },
                 cmd_matches.is_present("short"),
@@ -241,18 +234,18 @@ fn run() -> i32 {
             )
         },
         HashCommand::VerifyHash(None) => {
-            let hash_file_str = cmd_matches.value_of_os("FILE").unwrap();
+            let hash_file_str = cmd_matches.value_of("FILE").unwrap();
             let hash_file = match File::open(hash_file_str) {
                 Ok(file) => file,
                 Err(e) => {
                     eprintln!("Error opening hash file {}: {}",
-                            hash_file_str.to_string_lossy(), e);
+                            hash_file_str, e);
                     return VERIF_READ_ERR;
                 }
             };
             let mut hash_file_reader = BufReader::new(hash_file);
 
-            let mut file_vec: Vec<(OsString, Option<PreHashError>)> = Vec::new();
+            let mut file_vec: Vec<(String, Option<PreHashError>)> = Vec::new();
             // Parse version number
             let mut version_line = String::new();
             let version_read_result = hash_file_reader.read_line(&mut version_line);
@@ -361,29 +354,29 @@ fn run() -> i32 {
                     if path.is_file() {
                         if File::open(&path).is_err() {
                             // We already checked file existence
-                            file_vec.push((path.into_os_string(),
+                            file_vec.push((path.to_string_lossy().into_owned(),
                                 Some(PreHashError::ReadPermissionError)))
                         } else if let Some(expected_len) = len_option {
                             let actual_len = path.metadata().unwrap().len();
                             if actual_len == expected_len {
-                                file_vec.push((path.into_os_string(), None));
+                                file_vec.push((path.to_string_lossy().into_owned(), None));
                             } else {
                                 let mismatch_len_obj = StoredAndComputed::new
                                     (expected_len, actual_len);
                                 file_vec.push((
-                                    path.into_os_string(),
+                                    path.to_string_lossy().into_owned(),
                                     Some(PreHashError::MismatchedLength(
                                         mismatch_len_obj
                                     )))
                                 )
                             }
                         } else {
-                            file_vec.push((path.into_os_string(), None))
+                            file_vec.push((path.to_string_lossy().into_owned(), None))
                         }
                     } else {
                         file_vec.push(
                             (
-                                path.into_os_string(),
+                                path.to_string_lossy().into_owned(),
                                 Some(PreHashError::FileNotFound))
                             )
                     }
@@ -419,7 +412,7 @@ fn run() -> i32 {
     let file_list: Vec<(PathBuf, bool)> = file_list_result.into_iter().map(|(path_str, err_opt)| {
         if let Some(err) = err_opt {
             eprintln!("Error with file {}: {}",
-                    path_str.to_string_lossy(), err);
+                    path_str, err);
             hashing_final_status = 1;
             match err {
                 PreHashError::MismatchedLength(_) => {
@@ -449,7 +442,7 @@ fn run() -> i32 {
     let quiet_count = matches.occurrences_of("quiet");
 
     // e.exit() never gets called because "jobs" has a default value
-    let thread_count = value_t!(matches, "jobs", usize)
+    let thread_count = matches.value_of_t("jobs")
         .unwrap_or_else(|e| e.exit());
 
     let hash_enum: HashFunctions = tree_params.hash_function;
