@@ -182,7 +182,7 @@ where
                     block_size, block_count, slice_range, branch, 
                     hash_queue.clone(), threadpool));
             }
-            let mut hash_input: Vec<GenericArray<u8, D::OutputSize>> = Vec::with_capacity(
+            let mut hash_input: Vec<digest::Output<D>> = Vec::with_capacity(
                 subhash_awaitables.len());
             for awaitable in subhash_awaitables {
                 match awaitable.await_() {
@@ -219,8 +219,8 @@ where
 
                 //let hash_result = D::digest(hash_input.as_slice());
                 let mut digest_obj = D::new_with_prefix(&[0x01]);
-                for h in hash_input.iter() {
-                    digest_obj.update(h);
+                for hash in hash_input.iter() {
+                    digest_obj.update(hash);
                 }
                 let hash_result = digest_obj.finalize();
                 let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
