@@ -1,0 +1,4 @@
+Warning: Verification of long hashes may fail early if the hash file is malformed, even when --fail-fast is not specified
+================================= 16_byte_file =================================
+Error verifying file 16_byte_file: found malformed entry   0 [0x00000001-0x00000001] [0x00000004-sd000007] acd63e3259039b1efc4a476194483af4252d512ebf71077f31e7b12f5aa22940
+

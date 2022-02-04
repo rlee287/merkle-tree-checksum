@@ -1,0 +1,7 @@
+Warning: Verification of long hashes may fail early if the hash file is malformed, even when --fail-fast is not specified
+================================= 16_byte_file =================================
+Info: 16_byte_file hash matches
+================================= 20_byte_file =================================
+Error verifying file 20_byte_file: hash mismatch over byte range [0x00000008-0x0000000b]:
+  stored:   d686db712f567deffff8a6244aec0de7062a586a0635677741122e367ec3d477
+  computed: d686db712f567de26208a6244aec0de7062a586a0635677741122e367ec3d477

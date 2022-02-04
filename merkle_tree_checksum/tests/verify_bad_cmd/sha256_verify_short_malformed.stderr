@@ -1,0 +1,7 @@
+================================= 16_byte_file =================================
+Error verifying file 16_byte_file: found malformed entry 000007f97f6715ee2af9489d1c854701434542a0b402f6d8dd94deca  "16_byte_file"
+
+================================= 20_byte_file =================================
+Info: 20_byte_file hash matches
+================================== empty_file ==================================
+Info: empty_file hash matches

@@ -1,0 +1,10 @@
+Error with file 16_byte_file: mismatched file length:
+  expected: 17
+  actual:   16
+Warning: Verification of long hashes may fail early if the hash file is malformed, even when --fail-fast is not specified
+================================= 16_byte_file =================================
+Warning: skipped
+================================= 20_byte_file =================================
+Info: 20_byte_file hash matches
+================================== empty_file ==================================
+Info: empty_file hash matches

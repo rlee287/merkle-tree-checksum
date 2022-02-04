@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use scopeguard::defer;
 
@@ -21,9 +21,58 @@ const VERIFY_TOML: &str =
 r#"bin.name = "merkle_tree_checksum"
 args = "verify-hash -- hash_out"
 fs.sandbox = true"#;
+const VERIFY_BAD_TEMPLATE: &str =
+r#"bin.name = "merkle_tree_checksum"
+args = "verify-hash -- FILENAME"
+fs.sandbox = true
+status.code = STATUS_CODE"#;
 
 // Set to true to debug generated temp files
 const SKIP_CLEANUP: bool = false;
+
+fn cmd_test_helper<'a>(dir_path: &Path, prefix_names: impl IntoIterator<Item = &'a str>,
+        mkdir_rmdir: bool) {
+    let prefix_vec: Vec<_> = prefix_names.into_iter().collect();
+    for prefix in prefix_vec.iter() {
+        let mut in_dir_path = PathBuf::from(dir_path);
+        in_dir_path.push(format!("{}.in", prefix));
+        if mkdir_rmdir {
+            fs::create_dir(&in_dir_path).unwrap();
+        }
+        for input_file in INPUT_FILE_LIST {
+            let mut dest_path = in_dir_path.clone();
+            dest_path.push(input_file);
+            let src_path = format!("tests/reference_files/{}", input_file);
+    
+            fs::copy(&src_path, dest_path)
+                .expect(format!("Error copying from {}", src_path).as_str());
+        }
+    }
+
+    defer! {
+        if !SKIP_CLEANUP {
+            for prefix in prefix_vec {
+                let mut in_dir_path = PathBuf::from(dir_path);
+                in_dir_path.push(format!("{}.in", prefix));
+                if mkdir_rmdir {
+                    fs::remove_dir_all(&in_dir_path)
+                        .expect(format!("Error removing dir {}", in_dir_path.display()).as_str());
+                } else {
+                    for input_file in INPUT_FILE_LIST {
+                        let mut dest_path = in_dir_path.clone();
+                        dest_path.push(input_file);
+                
+                        fs::remove_file(&dest_path)
+                            .expect(format!("Error removing file {}", dest_path.display()).as_str());
+                    }
+                }
+            }
+        }
+    }
+    let mut toml_path = PathBuf::from(dir_path);
+    toml_path.push("*.toml");
+    trycmd::TestCases::new().case(toml_path);
+}
 
 #[test]
 fn gen_ref_cmd_tests() {
@@ -40,7 +89,7 @@ fn gen_ref_cmd_tests() {
         fs::create_dir(in_dir).unwrap();
         for input_file in INPUT_FILE_LIST {
             let mut dest_path = in_dir.clone();
-            dest_path.extend(&[input_file]);
+            dest_path.push(input_file);
 
             fs::copy(format!("tests/reference_files/{}", input_file),
             dest_path).unwrap();
@@ -64,6 +113,11 @@ fn gen_ref_cmd_tests() {
 #[test]
 fn gen_ref_short_cmd_tests() {
     // We're only doing sha256 for now; update if doing parametric generation
+    let test_dir = PathBuf::from("tests/gen_ref_short_cmd");
+    cmd_test_helper(&test_dir, ["sha256_gen_ref_short"], true);
+}
+/*fn gen_ref_short_cmd_tests() {
+    // We're only doing sha256 for now; update if doing parametric generation
     let in_dir = PathBuf::from("tests/gen_ref_short_cmd/sha256_gen_ref_short.in");
     fs::create_dir(&in_dir).unwrap();
     for input_file in INPUT_FILE_LIST {
@@ -81,7 +135,7 @@ fn gen_ref_short_cmd_tests() {
 
     trycmd::TestCases::new()
         .case("tests/gen_ref_short_cmd/sha256_gen_ref_short.toml");
-}
+}*/
 
 #[test]
 fn verify_cmd_tests() {
@@ -98,10 +152,11 @@ fn verify_cmd_tests() {
     for in_dir in in_directories.iter() {
         for input_file in INPUT_FILE_LIST {
             let mut dest_path = in_dir.clone();
-            dest_path.extend(&[input_file]);
+            dest_path.push(input_file);
 
             fs::copy(format!("tests/reference_files/{}", input_file),
-            dest_path).unwrap();
+                &dest_path)
+                .expect(format!("Error copying to {}", dest_path.display()).as_str());
         }
     }
     defer!{
@@ -109,7 +164,7 @@ fn verify_cmd_tests() {
             for in_dir in in_directories {
                 for input_file in INPUT_FILE_LIST {
                     let mut dest_path = in_dir.clone();
-                    dest_path.extend(&[input_file]);
+                    dest_path.push(input_file);
                     fs::remove_file(dest_path).unwrap();
                 }
             }
@@ -124,6 +179,11 @@ fn verify_cmd_tests() {
 }
 #[test]
 fn verify_short_cmd_tests() {
+    // We're only doing sha256 for now; update if doing parametric generation
+    let test_dir = PathBuf::from("tests/verify_short_cmd");
+    cmd_test_helper(&test_dir, ["sha256_verify_short"], false);
+}
+/*fn verify_short_cmd_tests() {
     // We're only doing sha256 for now; update if doing parametric generation
     let in_dir = PathBuf::from("tests/verify_short_cmd/sha256_verify_short.in");
     for input_file in INPUT_FILE_LIST {
@@ -145,7 +205,89 @@ fn verify_short_cmd_tests() {
 
     trycmd::TestCases::new()
         .case("tests/verify_short_cmd/sha256_verify_short.toml");
+}*/
+
+#[test]
+fn verify_bad_cmd_tests() {
+    // We're only doing sha256 for now; update if doing parametric generation
+    let suffix_list = ["badhash", "badlen", "badlen_last", "malformed", "short_badhash", "short_malformed"];
+    let input_testcase_tuples = suffix_list
+        .map(|s| (format!("hash_out_{}", s), format!("sha256_verify_{}", s)));
+    for (input_name, testcase) in input_testcase_tuples.iter() {
+        let mut in_dir = PathBuf::from("tests/verify_bad_cmd");
+        let mut toml_path = in_dir.clone();
+        in_dir.push(testcase.clone() + ".in");
+        toml_path.push(testcase.clone() + ".toml");
+
+        let mut toml_content = VERIFY_BAD_TEMPLATE.replace("FILENAME", input_name);
+        let expected_status = match input_name.find("badlen") {
+            Some(_) => 1,
+            None => 3
+        };
+        toml_content = toml_content.replace("STATUS_CODE", &expected_status.to_string());
+        let mut toml_file = File::create(toml_path).unwrap();
+        write!(toml_file, "{}", toml_content).unwrap();
+        drop(toml_file);
+
+        fs::create_dir(&in_dir).unwrap();
+
+        let mut inputfile_path = in_dir.clone();
+        inputfile_path.push(input_name);
+        fs::copy(format!("tests/reference_files/{}", input_name),
+            &inputfile_path)
+            .expect(format!("Error copying to {}", inputfile_path.display()).as_str());
+        for data_file in INPUT_FILE_LIST {
+            let mut data_file_path = in_dir.clone();
+            data_file_path.push(data_file);
+            fs::copy(format!("tests/reference_files/{}", data_file),
+                &data_file_path)
+                .expect(format!("Error copying to {}", data_file_path.display()).as_str());
+        }
+    }
+
+    defer! {
+        if !SKIP_CLEANUP {
+            for (_, testcase) in input_testcase_tuples.iter() {
+                let mut in_dir = PathBuf::from("tests/verify_bad_cmd");
+                let mut toml_path = in_dir.clone();
+                in_dir.push(testcase.clone() + ".in");
+                toml_path.push(testcase.clone() + ".toml");
+
+                fs::remove_file(&toml_path)
+                    .expect(format!("Error removing file {}", toml_path.display()).as_str());
+                fs::remove_dir_all(&in_dir)
+                    .expect(format!("Error removing dir {}", in_dir.display()).as_str());
+            }
+        }
+    }
+
+    trycmd::TestCases::new()
+        .case("tests/verify_bad_cmd/*.toml");
+    //cmd_test_helper(&in_dir, input_testcase_tuples.map(|_,t| t), false);
 }
+/*fn verify_bad_cmd_tests() {
+    // We're only doing sha256 for now; update if doing parametric generation
+    let in_dir = PathBuf::from("tests/verify_bad_cmd/sha256_verify_bad.in");
+    for input_file in INPUT_FILE_LIST {
+        let mut dest_path = in_dir.clone();
+        dest_path.extend(&[input_file]);
+
+        fs::copy(format!("tests/reference_files/{}", input_file),
+        dest_path).unwrap();
+    }
+    defer! {
+        if !SKIP_CLEANUP {
+            for input_file in INPUT_FILE_LIST {
+                let mut dest_path = in_dir.clone();
+                dest_path.extend(&[input_file]);
+                fs::remove_file(dest_path).unwrap();
+            }
+        }
+    }
+
+    trycmd::TestCases::new()
+        .case("tests/verify_bad_cmd/sha256_verify_bad.toml");
+}*/
 
 #[test]
 fn help_test() {
