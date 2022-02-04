@@ -1,0 +1,7 @@
+Warning: Verification of long hashes may fail early if the hash file is malformed, even when --fail-fast is not specified
+================================= 16_byte_file =================================
+Info: 16_byte_file hash matches
+================================= 20_byte_file =================================
+Info: 20_byte_file hash matches
+================================== empty_file ==================================
+Info: empty_file hash matches

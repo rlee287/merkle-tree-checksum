@@ -24,6 +24,7 @@ use thread_pool::{FnEvaluator, DummyEvaluator, ThreadPoolEvaluator};
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum HelperErrSignal {
     FileEOF,
+    FileReadErr,
     ConsumerErr
 }
 
@@ -122,11 +123,7 @@ where
         // TODO: reduce indirection
         if block_interval == 1 {
             let block_size_as_usize: usize = block_size.try_into().unwrap();
-            let mut file_vec: Vec::<u8> = vec![0x00; 1];
-    
-            // Initial size to block_size to read in a full block...
-            // 0x00 already prepended before reading in file contents
-            //file_vec[0] = 0x00;
+
             // Should be optimized out in release mode
             #[cfg(debug_assertions)]
             {
@@ -135,11 +132,18 @@ where
             }
 
 
-            file_vec.extend(read_exact_vec(file, Some(current_pos),
-                block_size_as_usize).unwrap());
+            let file_read_result = read_exact_vec(file, Some(current_pos),
+                block_size_as_usize);
+            let file_vec: Vec<u8>;
 
-            let bytes_read = file_vec.len()-1;
-            current_pos += bytes_read as u64;
+            if file_read_result.is_err() {
+                let read_err = DummyAwaitable::new(Err(HelperErrSignal::FileReadErr));
+                return Box::new(read_err)
+            } else {
+                file_vec = file_read_result.unwrap();
+            }
+
+            current_pos += file_vec.len() as u64;
             let end_byte_file = current_pos.saturating_sub(1);
             #[cfg(debug_assertions)]
             {
@@ -150,7 +154,10 @@ where
                 let block_range = BlockRange::new(start_block, end_block, true);
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);
 
-                let hash_result = D::digest(file_vec.as_slice());
+                // Prepend 0x00 to the data when hashing
+                let mut digest_obj = D::new_with_prefix(&[0x00]);
+                digest_obj.update(file_vec.as_slice());
+                let hash_result = digest_obj.finalize();
                 let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
 
                 if hash_queue.accept(block_hash_result).is_ok() {
@@ -175,13 +182,12 @@ where
                     block_size, block_count, slice_range, branch, 
                     hash_queue.clone(), threadpool));
             }
-            let mut hash_input: Vec<u8> = Vec::with_capacity(
-                <D as Digest>::output_size()*subhash_awaitables.len()+1);
-            hash_input.insert(0, 0x01);
+            let mut hash_input: Vec<digest::Output<D>> = Vec::with_capacity(
+                subhash_awaitables.len());
             for awaitable in subhash_awaitables {
                 match awaitable.await_() {
                     Ok(subhash) => {
-                        hash_input.extend(&subhash.0);
+                        hash_input.push(subhash.0);
                         current_pos = subhash.1;
                     },
                     Err(HelperErrSignal::FileEOF) => {
@@ -190,6 +196,10 @@ where
                         // The rest of the awaitables are DummyAwaitables,
                         // so dropping them does not hang up a channel
                         break;
+                    },
+                    Err(HelperErrSignal::FileReadErr) => {
+                        let dummy_err = DummyAwaitable::new(Err(HelperErrSignal::FileReadErr));
+                        return Box::new(dummy_err);
                     },
                     Err(HelperErrSignal::ConsumerErr) => {
                         let dummy_err = DummyAwaitable::new(Err(HelperErrSignal::ConsumerErr));
@@ -207,7 +217,12 @@ where
                 let block_range = BlockRange::new(start_block, end_block, true);
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);
 
-                let hash_result = D::digest(hash_input.as_slice());
+                //let hash_result = D::digest(hash_input.as_slice());
+                let mut digest_obj = D::new_with_prefix(&[0x01]);
+                for hash in hash_input.iter() {
+                    digest_obj.update(hash);
+                }
+                let hash_result = digest_obj.finalize();
                 let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
 
                 if hash_queue.accept(block_hash_result).is_ok() {

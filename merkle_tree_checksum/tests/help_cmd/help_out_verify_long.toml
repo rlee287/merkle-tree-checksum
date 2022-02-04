@@ -1,0 +1,3 @@
+bin.name = "merkle_tree_checksum"
+args = "verify-hash --help"
+status.code = 1

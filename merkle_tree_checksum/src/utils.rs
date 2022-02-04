@@ -18,7 +18,6 @@ use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3;
 use merkle_tree::{block_t, branch_t};
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -225,7 +224,7 @@ impl fmt::Display for TreeParams {
     }
 }
 
-pub(crate) fn str_to_files(file_str: &OsStr) -> Option<Vec<PathBuf>> {
+pub(crate) fn str_to_files(file_str: &str) -> Option<Vec<PathBuf>> {
     let mut file_list = Vec::<PathBuf>::new();
     let file_path = Path::new(&file_str);
     if file_path.is_file() {

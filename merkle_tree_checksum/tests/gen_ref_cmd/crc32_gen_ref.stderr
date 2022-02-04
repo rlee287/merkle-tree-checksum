@@ -1,0 +1,4 @@
+Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption
+================================= 16_byte_file =================================
+================================= 20_byte_file =================================
+================================== empty_file ==================================
