@@ -116,26 +116,6 @@ fn gen_ref_short_cmd_tests() {
     let test_dir = PathBuf::from("tests/gen_ref_short_cmd");
     cmd_test_helper(&test_dir, ["sha256_gen_ref_short"], true);
 }
-/*fn gen_ref_short_cmd_tests() {
-    // We're only doing sha256 for now; update if doing parametric generation
-    let in_dir = PathBuf::from("tests/gen_ref_short_cmd/sha256_gen_ref_short.in");
-    fs::create_dir(&in_dir).unwrap();
-    for input_file in INPUT_FILE_LIST {
-        let mut dest_path = in_dir.clone();
-        dest_path.extend(&[input_file]);
-
-        fs::copy(format!("tests/reference_files/{}", input_file),
-        dest_path).unwrap();
-    }
-    defer! {
-        if !SKIP_CLEANUP {
-            fs::remove_dir_all(in_dir).unwrap();
-        }
-    }
-
-    trycmd::TestCases::new()
-        .case("tests/gen_ref_short_cmd/sha256_gen_ref_short.toml");
-}*/
 
 #[test]
 fn verify_cmd_tests() {
@@ -183,29 +163,6 @@ fn verify_short_cmd_tests() {
     let test_dir = PathBuf::from("tests/verify_short_cmd");
     cmd_test_helper(&test_dir, ["sha256_verify_short"], false);
 }
-/*fn verify_short_cmd_tests() {
-    // We're only doing sha256 for now; update if doing parametric generation
-    let in_dir = PathBuf::from("tests/verify_short_cmd/sha256_verify_short.in");
-    for input_file in INPUT_FILE_LIST {
-        let mut dest_path = in_dir.clone();
-        dest_path.extend(&[input_file]);
-
-        fs::copy(format!("tests/reference_files/{}", input_file),
-        dest_path).unwrap();
-    }
-    defer! {
-        if !SKIP_CLEANUP {
-            for input_file in INPUT_FILE_LIST {
-                let mut dest_path = in_dir.clone();
-                dest_path.extend(&[input_file]);
-                fs::remove_file(dest_path).unwrap();
-            }
-        }
-    }
-
-    trycmd::TestCases::new()
-        .case("tests/verify_short_cmd/sha256_verify_short.toml");
-}*/
 
 #[test]
 fn verify_bad_cmd_tests() {
@@ -263,31 +220,7 @@ fn verify_bad_cmd_tests() {
 
     trycmd::TestCases::new()
         .case("tests/verify_bad_cmd/*.toml");
-    //cmd_test_helper(&in_dir, input_testcase_tuples.map(|_,t| t), false);
 }
-/*fn verify_bad_cmd_tests() {
-    // We're only doing sha256 for now; update if doing parametric generation
-    let in_dir = PathBuf::from("tests/verify_bad_cmd/sha256_verify_bad.in");
-    for input_file in INPUT_FILE_LIST {
-        let mut dest_path = in_dir.clone();
-        dest_path.extend(&[input_file]);
-
-        fs::copy(format!("tests/reference_files/{}", input_file),
-        dest_path).unwrap();
-    }
-    defer! {
-        if !SKIP_CLEANUP {
-            for input_file in INPUT_FILE_LIST {
-                let mut dest_path = in_dir.clone();
-                dest_path.extend(&[input_file]);
-                fs::remove_file(dest_path).unwrap();
-            }
-        }
-    }
-
-    trycmd::TestCases::new()
-        .case("tests/verify_bad_cmd/sha256_verify_bad.toml");
-}*/
 
 #[test]
 fn help_test() {
