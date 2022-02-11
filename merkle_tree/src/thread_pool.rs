@@ -3,7 +3,7 @@
 use std::thread;
 
 use oneshot::Receiver as OneshotReceiver;
-use crossbeam_channel::{Sender, unbounded};
+use crossbeam_channel::{Sender, bounded};
 
 use std::fmt::Debug;
 
@@ -70,7 +70,7 @@ pub(crate) struct ThreadPoolEvaluator {
 impl ThreadPoolEvaluator {
     pub fn new(name: String, thread_count: usize) -> ThreadPoolEvaluator {
         let mut handle_vec = Vec::with_capacity(thread_count);
-        let (tx, rx) = unbounded::<Box<dyn FnOnce() + Send>>();
+        let (tx, rx) = bounded::<Box<dyn FnOnce() + Send>>(num_cpus::get()*2);
         for i in 0..thread_count {
             let rx_copy = rx.clone();
             handle_vec.push(Some(thread::Builder::new()

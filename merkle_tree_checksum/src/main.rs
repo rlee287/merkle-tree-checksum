@@ -12,7 +12,7 @@ mod format_functions;
 mod parse_functions;
 
 use std::thread;
-use crossbeam_channel::unbounded as unbounded_channel;
+use crossbeam_channel::bounded as bounded_channel;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
@@ -663,7 +663,7 @@ fn run() -> i32 {
             })
             .unwrap();
 
-        let (tx, rx) = unbounded_channel::<HashRange>();
+        let (tx, rx) = bounded_channel::<HashRange>(16);
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
