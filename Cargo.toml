@@ -16,6 +16,7 @@ opt-level = 3
 [profile.dev.package.regex]
 opt-level = 3
 
-[profile.release]
+[profile.profile]
+inherits = "release"
 # Line tables are enough for profiling purposes
 debug = 1
