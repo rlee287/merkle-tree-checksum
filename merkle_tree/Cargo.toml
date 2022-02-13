@@ -32,4 +32,3 @@ features = ["std"]
 [dev-dependencies]
 sha2 = "0.10"
 permutohedron = "0.2"
-merkle_tree_test_utils = {version = "=0.1.0", path = "../merkle_tree_test_utils"}

@@ -51,4 +51,3 @@ rustc_version = "0.4"
 [dev-dependencies]
 trycmd = {version = "0.12", default-features = false, features = ["diff", "filesystem"]}
 scopeguard = "1.1"
-merkle_tree_test_utils = { version = "=0.1.0", path = "../merkle_tree_test_utils"}

@@ -1,5 +1,6 @@
 use merkle_tree::{BlockRange, HashRange, merkle_hash_file};
 use merkle_tree::{merkle_block_generator, reorder_hashrange_iter};
+use merkle_tree::Consumer;
 
 use std::io::Cursor;
 use std::convert::TryInto;
@@ -10,7 +11,15 @@ use std::str::FromStr;
 
 use crossbeam_channel::unbounded as unbounded_channel;
 
-use merkle_tree_test_utils::ThrowawayConsumer;
+#[derive(Default, Debug, Copy, Clone)]
+pub struct ThrowawayConsumer {}
+
+impl<T> Consumer<T> for ThrowawayConsumer {
+    fn accept(&self, _val: T) -> Result<(), T> {
+        // Throw away the value
+        Ok(())
+    }
+}
 
 #[test]
 fn test_blockrange_str_roundtrip() {
