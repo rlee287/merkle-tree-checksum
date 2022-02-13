@@ -70,7 +70,7 @@ pub(crate) struct ThreadPoolEvaluator {
 impl ThreadPoolEvaluator {
     pub fn new(name: String, thread_count: usize) -> ThreadPoolEvaluator {
         let mut handle_vec = Vec::with_capacity(thread_count);
-        let (tx, rx) = bounded::<Box<dyn FnOnce() + Send>>(num_cpus::get()*2);
+        let (tx, rx) = bounded::<Box<dyn FnOnce() + Send>>(2*thread_count);
         for i in 0..thread_count {
             let rx_copy = rx.clone();
             handle_vec.push(Some(thread::Builder::new()
