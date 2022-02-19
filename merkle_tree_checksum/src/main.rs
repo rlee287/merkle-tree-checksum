@@ -42,7 +42,7 @@ use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 use std::convert::TryFrom;
 use strum::VariantNames;
 
-use clap::{App, AppSettings, Arg, ArgMatches};
+use clap::{Command, Arg, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle,
     ProgressDrawTarget, MultiProgress};
 use git_version::git_version;
@@ -90,7 +90,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             git_version!(prefix = "git:", fallback = "unknown"),
             env!("RUSTC_VERSION_STR"));
 
-    let gen_hash_command = App::new(GENERATE_HASH_CMD_NAME)
+    let gen_hash_command = Command::new(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
         .after_help(&*gen_hash_after_help)
         .arg(Arg::new("hash").long("hash-function").short('f')
@@ -134,7 +134,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .takes_value(true).last(true)
             .multiple_values(true).max_values(u16::MAX.into())
             .help("Files to hash"));
-    let check_hash_command = App::new(VERIFY_HASH_CMD_NAME)
+    let check_hash_command = Command::new(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
         .arg(Arg::new("failfast").long("fail-fast")
             .help("Bail immediately on hash mismatch")
@@ -143,12 +143,12 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         .arg(Arg::new("FILE").required(true)
             .help("File containing the hashes to check"));
 
-    let clap_app = App::new(crate_name!())
+    let clap_app = Command::new(crate_name!())
         .version(&*version_str)
         .author(crate_authors!())
         .about(crate_description!())
         .after_help(HELP_STR_HASH_LIST)
-        .setting(AppSettings::SubcommandRequired)
+        .subcommand_required(true)
         .arg(Arg::new("quiet").long("quiet").short('q')
             .multiple_occurrences(true)
             .help("Print less text")
