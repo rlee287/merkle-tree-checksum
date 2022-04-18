@@ -7,11 +7,6 @@ use std::io::ErrorKind;
 
 use std::ops::{RangeBounds, Bound, RangeInclusive, Range};
 
-use std::str::FromStr;
-use regex::Regex;
-
-use lazy_static::lazy_static;
-
 use crossbeam_channel::Sender as CrossbeamSender;
 
 #[allow(non_camel_case_types)]
@@ -118,12 +113,6 @@ pub(crate) fn read_exact_vec<R: Read+Seek>(
     }
 }
 
-// Match to <opening [> 0x#-0x# <closing ] or )>, with # being hex digits
-// Do not require a specific count for future compatibility
-lazy_static! {
-    static ref BLOCK_RANGE_REGEX: Regex = 
-        Regex::new(r"^\[0x([[:xdigit:]]+)-0x([[:xdigit:]]+)(\]|\))$").unwrap();
-}
 #[derive(Debug, Copy, Clone)]
 pub struct BlockRange {
     start: u64,
@@ -228,24 +217,6 @@ impl fmt::Display for BlockRange {
         };
         // Emit [] for including end, and [) for excluding end
         write!(f, "[{:#010x}-{:#010x}{}", self.start, self.end, end_char)
-    }
-}
-impl FromStr for BlockRange {
-    type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(captures) = BLOCK_RANGE_REGEX.captures(s) {
-            assert_eq!(captures.len(), 4);
-            let start_val = u64::from_str_radix(&captures[1], 16).unwrap();
-            let end_val = u64::from_str_radix(&captures[2], 16).unwrap();
-            let end_included = match &captures[3] {
-                "]" => true,
-                ")" => false,
-                _ => panic!("Invalid end char")
-            };
-            Ok(BlockRange::new(start_val, end_val, end_included))
-        } else {
-            Err(())
-        }
     }
 }
 

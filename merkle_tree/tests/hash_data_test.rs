@@ -7,8 +7,6 @@ use std::convert::TryInto;
 use digest::Digest;
 use sha2::Sha256;
 
-use std::str::FromStr;
-
 use crossbeam_channel::unbounded as unbounded_channel;
 
 #[derive(Default, Debug, Copy, Clone)]
@@ -18,26 +16,6 @@ impl<T> Consumer<T> for ThrowawayConsumer {
     fn accept(&self, _val: T) -> Result<(), T> {
         // Throw away the value
         Ok(())
-    }
-}
-
-#[test]
-fn test_blockrange_str_roundtrip() {
-    let blockranges_ref = vec![BlockRange::new(0, 3, true),
-            BlockRange::new(0x12345678, 0xf0e1d2c3, false)];
-    for blockrange_ref in blockranges_ref {
-        let stringified = blockrange_ref.to_string();
-        let recovered_obj = BlockRange::from_str(&stringified).unwrap();
-        assert_eq!(blockrange_ref, recovered_obj);
-    }
-}
-
-#[test]
-fn test_blockrange_bad_str() {
-    let blockranges_str_bad = vec!["[034, 0x2124]", "[0x356, 9768)", "garbage"];
-    for bad_str in blockranges_str_bad {
-        let recovered_obj = BlockRange::from_str(bad_str);
-        assert!(recovered_obj.is_err());
     }
 }
 
