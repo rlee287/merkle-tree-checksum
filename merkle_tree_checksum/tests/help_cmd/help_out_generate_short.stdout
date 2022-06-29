@@ -2,10 +2,10 @@ merkle_tree_checksum-generate-hash
 Generates Merkle tree hashes
 
 USAGE:
-    merkle_tree_checksum generate-hash [OPTIONS] --output <output> [--] <FILES>...
+    merkle_tree_checksum generate-hash [OPTIONS] --output <output> [--] <FILES>
 
 ARGS:
-    <FILES>...    Files to hash
+    <FILES>    Files to hash
 
 OPTIONS:
     -b, --branch-factor <branch>      Branch factor for tree [default: 4]

@@ -42,7 +42,7 @@ use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 use std::convert::TryFrom;
 use strum::VariantNames;
 
-use clap::{Command, Arg, ArgMatches};
+use clap::{Command, Arg, ArgMatches, ArgAction};
 use indicatif::{ProgressBar, ProgressStyle,
     ProgressDrawTarget, MultiProgress};
 use git_version::git_version;
@@ -132,7 +132,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
                 "This will make identifying corrupted locations impossible.")))
         .arg(Arg::new("FILES").required(true)
             .takes_value(true).last(true)
-            .multiple_values(true).max_values(u16::MAX.into())
+            .action(ArgAction::Append)
             .help("Files to hash"));
     let check_hash_command = Command::new(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
@@ -150,7 +150,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         .after_help(HELP_STR_HASH_LIST)
         .subcommand_required(true)
         .arg(Arg::new("quiet").long("quiet").short('q')
-            .multiple_occurrences(true)
+            .action(ArgAction::Count)
             .help("Print less text")
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
@@ -199,7 +199,7 @@ fn run() -> i32 {
             (Vec<(String, Option<PreHashError>)>, TreeParams, bool, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash(None) => {
-            let file_vec: Vec<_> = cmd_matches.values_of("FILES").unwrap().collect();
+            let file_vec: Vec<_> = cmd_matches.get_many::<String>("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
                 {
@@ -229,12 +229,12 @@ fn run() -> i32 {
                     hash_function: cmd_matches.value_of_t("hash")
                         .unwrap_or_else(|e| e.exit())
                 },
-                cmd_matches.is_present("short"),
+                cmd_matches.contains_id("short"),
                 None
             )
         },
         HashCommand::VerifyHash(None) => {
-            let hash_file_str = cmd_matches.value_of("FILE").unwrap();
+            let hash_file_str: &String = cmd_matches.get_one("FILE").unwrap();
             let hash_file = match File::open(hash_file_str) {
                 Ok(file) => file,
                 Err(e) => {
@@ -417,7 +417,7 @@ fn run() -> i32 {
             match err {
                 PreHashError::MismatchedLength(_) => {
                     assert!(matches!(cmd_chosen, HashCommand::VerifyHash(_)));
-                    if cmd_matches.is_present("failfast") {
+                    if cmd_matches.contains_id("failfast") {
                         abort = Err(VERIF_BAD_ENTRY_ERR);
                     }
                 },
@@ -439,7 +439,7 @@ fn run() -> i32 {
         return exit_code;
     }
 
-    let quiet_count = matches.occurrences_of("quiet");
+    let quiet_count: u8 = *matches.get_one("quiet").unwrap_or(&0);
 
     // e.exit() never gets called because "jobs" has a default value
     let thread_count = matches.value_of_t("jobs")
@@ -479,7 +479,7 @@ fn run() -> i32 {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
     if quiet_count < 2 && matches!(cmd_chosen, HashCommand::VerifyHash(_))
-            && !short_output && !cmd_matches.is_present("failfast") {
+            && !short_output && !cmd_matches.contains_id("failfast") {
         eprintln!(
             concat!("Warning: Verification of long hashes may fail early ",
                 "if the hash file is malformed, ",
@@ -490,7 +490,7 @@ fn run() -> i32 {
     match cmd_chosen {
         HashCommand::GenerateHash(None) => {
             let write_file_name = cmd_matches.value_of("output").unwrap();
-            let overwrite = cmd_matches.is_present("overwrite");
+            let overwrite = cmd_matches.contains_id("overwrite");
             let open_result = match overwrite {
                 true => OpenOptions::new().write(true).create(true)
                     .truncate(true).open(write_file_name),
@@ -579,7 +579,7 @@ fn run() -> i32 {
                     } else {
                         eprintln!("Warning skipping file {}: {}", filename_str,
                             VerificationError::MalformedEntry(hash_line));
-                        if cmd_matches.is_present("failfast") {
+                        if cmd_matches.contains_id("failfast") {
                             return VERIF_BAD_ENTRY_ERR;
                         }
                     }
@@ -806,7 +806,7 @@ fn run() -> i32 {
             Err(err) => {
                 eprintln!("Error verifying file {}: {}", filename_str, err);
                 // TODO: error recovery when not using failfast
-                if cmd_matches.is_present("failfast") || !short_output {
+                if cmd_matches.contains_id("failfast") || !short_output {
                     return VERIF_BAD_ENTRY_ERR;
                 }
                 // Long output and failfast not specified
