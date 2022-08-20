@@ -82,7 +82,7 @@ fn main() {
 fn parse_cli() -> Result<ArgMatches, clap::Error> {
     let gen_hash_after_help = HELP_STR_HASH_LIST.to_owned()
         +concat!(" sha512-based hashes ",
-        "(sha384, sha512, sha512trunc224, and sha512trunc256) ",
+        "(sha384, sha512, sha512_224, and sha512_256) ",
         "can be significantly faster than sha256-based hashes ",
         "(sha224 and sha256) ",
         "on 64-bit systems that lack SHA hardware acceleration.");
