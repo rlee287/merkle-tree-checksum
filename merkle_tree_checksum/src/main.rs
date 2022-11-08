@@ -338,7 +338,7 @@ fn run() -> i32 {
                 }
                 if let Some((quoted_name, len_option)) = parse_functions::extract_quoted_filename(&next_line) {
                     assert_eq!(len_option.is_none(), is_short_hash);
-                    let unquoted_name = match enquote::unquote(&quoted_name) {
+                    let unquoted_name = match enquote::unquote(quoted_name) {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("Error: unable to unquote file name {}: {}",
@@ -612,7 +612,7 @@ fn run() -> i32 {
             }
             continue;
         }
-        let file_obj = match File::open(file_name.to_owned()) {
+        let file_obj = match File::open(file_name) {
             Ok(file) => file,
             Err(err) => {
                 eprintln!("Error opening file {} for reading: {}",
@@ -695,7 +695,7 @@ fn run() -> i32 {
                             file_index,
                             block_hash.block_range(),
                             block_hash.byte_range(),
-                            hex::encode(&block_hash.hash_result())
+                            hex::encode(block_hash.hash_result())
                         ).unwrap();
                     }
                     HashCommand::VerifyHash(Some(r)) => {

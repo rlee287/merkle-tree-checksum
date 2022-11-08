@@ -134,7 +134,7 @@ pub(crate) fn parse_version_line(version_line: &str)
     } else {
         return Err(HeaderParsingErr::MalformedFile);
     }
-    if version_str_iter.next() == None {
+    if version_str_iter.next().is_none() {
         return Ok(version_obj.unwrap());
     } else {
         return Err(HeaderParsingErr::MalformedFile);

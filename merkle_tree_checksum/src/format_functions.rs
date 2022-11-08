@@ -26,7 +26,7 @@ pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> Cow<'_, s
         let begin_half_len = filechar_count - end_half_len;
 
         let ret_str =
-            (&name_chars[..begin_half_len]).iter().collect::<String>()
+            (name_chars[..begin_half_len]).iter().collect::<String>()
             + "~"
             + &name_chars[name.len()-end_half_len..].iter().collect::<String>();
         assert!(ret_str.len() <= len_threshold);

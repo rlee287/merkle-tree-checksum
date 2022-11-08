@@ -136,11 +136,11 @@ where
                 block_size_as_usize);
             let file_vec: Vec<u8>;
 
-            if file_read_result.is_err() {
+            if let Ok(vec) = file_read_result {
+                file_vec = vec;
+            } else {
                 let read_err = DummyAwaitable::new(Err(HelperErrSignal::FileReadErr));
                 return Box::new(read_err)
-            } else {
-                file_vec = file_read_result.unwrap();
             }
 
             current_pos += file_vec.len() as u64;
@@ -155,7 +155,7 @@ where
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);
 
                 // Prepend 0x00 to the data when hashing
-                let mut digest_obj = D::new_with_prefix(&[0x00]);
+                let mut digest_obj = D::new_with_prefix([0x00]);
                 digest_obj.update(file_vec.as_slice());
                 let hash_result = digest_obj.finalize();
                 let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
@@ -218,7 +218,7 @@ where
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);
 
                 //let hash_result = D::digest(hash_input.as_slice());
-                let mut digest_obj = D::new_with_prefix(&[0x01]);
+                let mut digest_obj = D::new_with_prefix([0x01]);
                 for hash in hash_input.iter() {
                     digest_obj.update(hash);
                 }
