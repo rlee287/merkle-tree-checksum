@@ -624,9 +624,11 @@ fn run() -> i32 {
         let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor);
         let pb_file_style = ProgressStyle::default_bar()
             // 4 = max length of message strings below
-            .template("{msg:4} {bar:20} {bytes:>9}/{total_bytes:9} | {bytes_per_sec:>11}");
+            .template("{msg:4} {bar:20} {bytes:>11}/{total_bytes:11} | {bytes_per_sec:>12}")
+            .unwrap();
         let pb_hash_style = ProgressStyle::default_bar()
-            .template("{msg:4} {bar:20} {pos:>9}/{len:9} | {per_sec:>11} [{elapsed_precise}] ETA [{eta}]");
+            .template("{msg:4} {bar:20} {pos:>11}/{len:11} | {per_sec:>12} [{elapsed_precise}] ETA [{eta}]")
+            .unwrap();
 
         let pb_holder = MultiProgress::new();
         let pb_file = pb_holder.add(ProgressBar::new(file_size));
@@ -638,6 +640,7 @@ fn run() -> i32 {
             }
             pb_holder.set_draw_target(ProgressDrawTarget::hidden());
         } else { // quiet_count == 0
+            pb_holder.set_draw_target(ProgressDrawTarget::stderr_with_hz(5));
             pb_hash.set_style(pb_hash_style);
             pb_file.set_style(pb_file_style);
 
@@ -650,18 +653,8 @@ fn run() -> i32 {
             eprintln!("{}", title_center(&abbreviated_msg));
 
             pb_file.set_message("File");
-            pb_file.set_draw_rate(4);
-
             pb_hash.set_message("Hash");
-            pb_hash.set_draw_rate(4);
         }
-
-        let pb_thread_handle = thread::Builder::new()
-            .name(String::from(filename_str)+"_pb_wait")
-            .spawn(move || {
-                pb_holder.join().unwrap()
-            })
-            .unwrap();
 
         let (tx, rx) = bounded_channel::<HashRange>(16);
         let thread_handle = thread::Builder::new()
@@ -679,7 +672,7 @@ fn run() -> i32 {
                 let pb_wrap = pb_file.wrap_read(file_obj);
                 let result = merkle_tree_thunk(pb_wrap,
                     block_size, branch_factor, tx, thread_count);
-                pb_file.finish_at_current_pos();
+                pb_file.finish();
                 result
             })
             .unwrap();
@@ -744,13 +737,12 @@ fn run() -> i32 {
             }
         }
 
-        pb_hash.finish_at_current_pos();
-        pb_thread_handle.join().unwrap();
+        pb_hash.finish();
 
         let final_hash_option = thread_handle.join().unwrap();
 
         if quiet_count == 0 && hash_loop_status.is_ok() {
-            assert_eq!(pb_hash.position(), pb_hash.length());
+            assert_eq!(pb_hash.position(), pb_hash.length().unwrap());
         }
 
         if short_output {
