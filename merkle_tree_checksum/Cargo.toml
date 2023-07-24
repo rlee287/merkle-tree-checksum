@@ -16,11 +16,11 @@ semver = "1.0"
 hex = "0.4"
 lazy_static = "1.4"
 # Enabling proc-macro pulls in too many dependencies
-cached = { version = "0.38", default-features = false}
+cached = { version = "0.44", default-features = false}
 crossbeam-channel = "0.5"
 git-version = "0.3"
-strum = "0.24"
-strum_macros = "0.24" # We import this too
+strum = "0.25"
+strum_macros = "0.25" # We import this too
 
 #crc32-digest uses an outdated version of the Digest trait
 digest = "0.10"
@@ -49,5 +49,5 @@ features = ["std", "perf"]
 rustc_version = "0.4"
 
 [dev-dependencies]
-trycmd = {version = "0.13", default-features = false, features = ["diff", "filesystem"]}
+trycmd = {version = "0.14", default-features = false, features = ["diff", "filesystem"]}
 scopeguard = "1.1"
