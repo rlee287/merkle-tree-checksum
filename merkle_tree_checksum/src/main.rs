@@ -101,23 +101,11 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .help("Hash function to use"))
         .arg(Arg::new("branch").long("branch-factor").short('b')
             .takes_value(true).default_value("4")
-            .validator(|input_str| -> Result<(), String> {
-                match input_str.parse::<branch_t>() {
-                    Ok(0) | Ok(1) => Err("branch must be >= 2".to_string()),
-                    Ok(_) => Ok(()),
-                    Err(err) => Err(err.to_string())
-                }
-            })
+            .value_parser(clap::value_parser!(branch_t).range(2..))
             .help("Branch factor for tree"))
         .arg(Arg::new("blocksize").long("block-length").short('l')
             .takes_value(true).default_value("4096")
-            .validator(|input_str| -> Result<(), String> {
-                match size_str_to_num(input_str) {
-                    Some(0) => Err("blocksize must be positive".to_owned()),
-                    Some(_) => Ok(()),
-                    None => Err("blocksize is invalid".to_owned())
-                }
-            })
+            .value_parser(clap::value_parser!(block_t).range(1..))
             .help("Block size to hash over, in bytes")
             .long_help(concat!("Block size to hash over, in bytes ",
                 "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
@@ -156,12 +144,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
                 "Specify twice to suppress all output besides errors.")))
         .arg(Arg::new("jobs").long("jobs").short('j')
             .takes_value(true).default_value("4")
-            .validator(|input_str| -> Result<(), String> {
-                match input_str.parse::<usize>() {
-                    Ok(_) => Ok(()),
-                    Err(err) => Err(err.to_string())
-                }
-            })
+            .value_parser(clap::value_parser!(usize))
             .help("Specify size of thread pool for hashing (set to 0 to disable)")
             .long_help(concat!(
                 "Specify size of thread pool for hashing. ",
