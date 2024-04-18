@@ -8,7 +8,7 @@ use std::fmt;
 use crate::error_types::HeaderParsingErr;
 use crate::parse_functions::size_str_to_num;
 
-use strum_macros::{EnumString, EnumVariantNames, FromRepr};
+use strum_macros::{EnumString, VariantNames, FromRepr};
 
 use digest::Digest;
 use crate::crc32_utils::Crc32;
@@ -42,7 +42,7 @@ impl<T> StoredAndComputed<T> {
 impl<T: Copy> Copy for StoredAndComputed<T> {}
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[derive(EnumString, EnumVariantNames, FromRepr, strum_macros::Display)]
+#[derive(EnumString, VariantNames, FromRepr, strum_macros::Display)]
 #[allow(non_camel_case_types)]
 #[repr(u8)]
 /*
