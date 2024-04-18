@@ -2,8 +2,7 @@
 
 use semver::Version;
 
-use std::sync::Arc;
-use lazy_static::lazy_static;
+use std::sync::{Arc, OnceLock};
 use cached::cached;
 
 use std::str::FromStr;
@@ -15,7 +14,10 @@ use crate::error_types::HeaderParsingErr;
 
 const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
 const NEWLINE_REGEX: &str = "(?:\\n|\\r\\n)?";
-lazy_static! {
+
+static SIZE_REGEX: OnceLock<Regex> = OnceLock::new();
+#[inline]
+fn get_size_regex() -> &'static Regex {
     // SIZE_REGEX does not need to match normal ints
     /*
      * Capture groups:
@@ -25,33 +27,36 @@ lazy_static! {
      * 3: multiplier prefix
      * 4: whether prefix is base-10 or base-2
      */
-    static ref SIZE_REGEX: Regex =
-        Regex::new(concat!("^",
-            "(?:([1-9][0-9]*)|([0-9]+\\.[0-9]+))",
-            "(K|M|G)(i)?",
-            "$")).unwrap();
-    static ref QUOTED_FILENAME_REGEX: Regex = {
-        let hash_regex = "(?:[[:xdigit:]][[:xdigit:]])+";
-        let length_regex = "0x([[:xdigit:]]+) bytes";
-        /*
-         * Capture groups:
-         * 0: entire thing
-         * 1: first branch of the |
-         * 2: quoted string for first branch
-         * 3: second branch of the |
-         * 4: quoted string for the second branch
-         * 5: file length for the second branch
-         */
-        let combined_regex = format!("^(?:({0} +{1})|({1} {2})){3}$",
-            hash_regex, QUOTED_STR_REGEX, length_regex, NEWLINE_REGEX);
-        Regex::new(&combined_regex).unwrap()
-    };
+    SIZE_REGEX.get_or_init(|| Regex::new(concat!(
+        "^",
+        "(?:([1-9][0-9]*)|([0-9]+\\.[0-9]+))",
+        "(K|M|G)(i)?",
+        "$")).unwrap())
 }
+static QUOTED_FILENAME_REGEX: OnceLock<Regex> = OnceLock::new();
+#[inline]
+fn get_quoted_filename_regex() -> &'static Regex {
+    let hash_regex = "(?:[[:xdigit:]][[:xdigit:]])+";
+    let length_regex = "0x([[:xdigit:]]+) bytes";
+    /*
+     * Capture groups:
+     * 0: entire thing
+     * 1: first branch of the |
+     * 2: quoted string for first branch
+     * 3: second branch of the |
+     * 4: quoted string for the second branch
+     * 5: file length for the second branch
+     */
+    let combined_regex = format!("^(?:({0} +{1})|({1} {2})){3}$",
+        hash_regex, QUOTED_STR_REGEX, length_regex, NEWLINE_REGEX);
+    QUOTED_FILENAME_REGEX.get_or_init(|| Regex::new(&combined_regex).unwrap())
+}
+
 pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
     match input_str.parse::<block_t>() {
         Ok(val) => Some(val),
         Err(_) => {
-            let number_parts_res = SIZE_REGEX.captures(input_str);
+            let number_parts_res = get_size_regex().captures(input_str);
             if let Some(captures) = number_parts_res {
                 debug_assert!(captures.len() == 5);
                 assert!(captures.get(1).is_some() ^ captures.get(2).is_some());
@@ -93,7 +98,7 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
 
 // (String, Option<u64>) is (quoted_filename, file_len_if_present)
 pub(crate) fn extract_quoted_filename(line: &str) -> Option<(&str, Option<u64>)> {
-    let line_portions = QUOTED_FILENAME_REGEX.captures(line)?;
+    let line_portions = get_quoted_filename_regex().captures(line)?;
     debug_assert!(line_portions.len() == 6);
     if line_portions.get(1).is_some() {
         Some((line_portions.get(2).unwrap().as_str(), None))

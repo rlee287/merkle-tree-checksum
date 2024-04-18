@@ -561,7 +561,6 @@ dependencies = [
  "git-version",
  "hex",
  "indicatif",
- "lazy_static",
  "merkle_tree",
  "regex",
  "rustc_version",
