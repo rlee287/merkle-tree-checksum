@@ -33,9 +33,9 @@ blake3 = { version = "1.3", features = ["traits-preview"] }
 merkle_tree = { version = "=0.4.1", path = "../merkle_tree"}
 
 [dependencies.clap]
-version = "~3.1"
+version = "~3.2"
 default-features = false
-features = [ "std", "cargo", "wrap_help", "color", "suggestions" ]
+features = [ "std", "cargo", "wrap_help", "color", "suggestions", "deprecated" ]
 
 # Pull in perf feature to speed up matching
 # Both transitive dependency of indicatif and used to parse hash records
