@@ -112,8 +112,10 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .takes_value(true).required(true)
             .help("Output file"))
         .arg(Arg::new("overwrite").long("overwrite")
+            .action(clap::ArgAction::SetTrue)
             .help("Overwrite output file if it already exists"))
         .arg(Arg::new("short").long("short").short('s')
+            .action(clap::ArgAction::SetTrue)
             .help("Write only the summary hash")
             .long_help(concat!("Write only the summary hash to the output. ",
                 "This will make identifying corrupted locations impossible.")))
@@ -124,6 +126,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
     let check_hash_command = Command::new(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
         .arg(Arg::new("failfast").long("fail-fast")
+            .action(clap::ArgAction::SetTrue)
             .help("Bail immediately on hash mismatch")
             .long_help(concat!("Skip checking the rest of the files ",
                 "when a hash mismatch is detected.")))
@@ -181,7 +184,7 @@ fn run() -> i32 {
             (Vec<(String, Option<PreHashError>)>, TreeParams, bool, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash(None) => {
-            let file_vec: Vec<_> = cmd_matches.values_of("FILES").unwrap().collect();
+            let file_vec: Vec<_> = cmd_matches.get_many::<String>("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
                 {
@@ -209,12 +212,12 @@ fn run() -> i32 {
                     branch_factor: *cmd_matches.get_one("branch").unwrap(),
                     hash_function: *cmd_matches.get_one("hash").unwrap()
                 },
-                cmd_matches.is_present("short"),
+                cmd_matches.get_flag("short"),
                 None
             )
         },
         HashCommand::VerifyHash(None) => {
-            let hash_file_str = cmd_matches.value_of("FILE").unwrap();
+            let hash_file_str = cmd_matches.get_one::<String>("FILE").unwrap();
             let hash_file = match File::open(hash_file_str) {
                 Ok(file) => file,
                 Err(e) => {
@@ -397,7 +400,7 @@ fn run() -> i32 {
             match err {
                 PreHashError::MismatchedLength(_) => {
                     assert!(matches!(cmd_chosen, HashCommand::VerifyHash(_)));
-                    if cmd_matches.is_present("failfast") {
+                    if cmd_matches.get_flag("failfast") {
                         abort = Err(VERIF_BAD_ENTRY_ERR);
                     }
                 },
@@ -459,7 +462,7 @@ fn run() -> i32 {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
     if quiet_count < 2 && matches!(cmd_chosen, HashCommand::VerifyHash(_))
-            && !short_output && !cmd_matches.is_present("failfast") {
+            && !short_output && !cmd_matches.get_flag("failfast") {
         eprintln!(
             concat!("Warning: Verification of long hashes may fail early ",
                 "if the hash file is malformed, ",
@@ -469,8 +472,8 @@ fn run() -> i32 {
 
     match cmd_chosen {
         HashCommand::GenerateHash(None) => {
-            let write_file_name = cmd_matches.value_of("output").unwrap();
-            let overwrite = cmd_matches.is_present("overwrite");
+            let write_file_name = cmd_matches.get_one::<String>("output").unwrap();
+            let overwrite = cmd_matches.get_flag("overwrite");
             let open_result = match overwrite {
                 true => OpenOptions::new().write(true).create(true)
                     .truncate(true).open(write_file_name),
@@ -559,7 +562,7 @@ fn run() -> i32 {
                     } else {
                         eprintln!("Warning skipping file {}: {}", filename_str,
                             VerificationError::MalformedEntry(hash_line));
-                        if cmd_matches.is_present("failfast") {
+                        if cmd_matches.get_flag("failfast") {
                             return VERIF_BAD_ENTRY_ERR;
                         }
                     }
@@ -778,7 +781,7 @@ fn run() -> i32 {
             Err(err) => {
                 eprintln!("Error verifying file {}: {}", filename_str, err);
                 // TODO: error recovery when not using failfast
-                if cmd_matches.is_present("failfast") || !short_output {
+                if cmd_matches.get_flag("failfast") || !short_output {
                     return VERIF_BAD_ENTRY_ERR;
                 }
                 // Long output and failfast not specified
