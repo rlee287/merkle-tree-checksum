@@ -280,4 +280,15 @@ mod tests {
         assert_eq!(HashFunctions::from_str("sha512_256").unwrap(),
             HashFunctions::sha512_256);
     }
+    #[test]
+    fn hash_enum_blake2_backcompat() {
+        assert_eq!(HashFunctions::from_str("blake2b").unwrap(),
+            HashFunctions::blake2b_512);
+        assert_eq!(HashFunctions::from_str("blake2s").unwrap(),
+            HashFunctions::blake2s_256);
+        assert_eq!(HashFunctions::from_str("blake2b512").unwrap(),
+            HashFunctions::blake2b_512);
+        assert_eq!(HashFunctions::from_str("blake2s256").unwrap(),
+            HashFunctions::blake2s_256);
+    }
 }
