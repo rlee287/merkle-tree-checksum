@@ -14,7 +14,6 @@ num-iter = "0.1"
 # The more popular "generator" library has potential unsoundness issues
 # Prefering genawaiter with more documentation and no stack-switch shenanigans
 genawaiter = {version = "0.99", default-features = false}
-async-recursion = "1.0"
 
 crossbeam-channel = "0.5"
 [dependencies.oneshot]

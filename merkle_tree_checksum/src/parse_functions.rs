@@ -2,8 +2,7 @@
 
 use semver::Version;
 
-use std::sync::Arc;
-use lazy_static::lazy_static;
+use std::sync::{Arc, OnceLock};
 use cached::cached;
 
 use std::str::FromStr;
@@ -11,11 +10,14 @@ use regex::Regex;
 use hex::FromHex;
 
 use merkle_tree::{BlockRange, HashRange, block_t};
-use crate::error_types::HeaderParsingErr;
+use crate::error_types::{FilenameExtractionError, HashExtractionError, HeaderParsingErr, SizeStrToNumErr};
 
 const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
 const NEWLINE_REGEX: &str = "(?:\\n|\\r\\n)?";
-lazy_static! {
+
+static SIZE_REGEX: OnceLock<Regex> = OnceLock::new();
+#[inline]
+fn get_size_regex() -> &'static Regex {
     // SIZE_REGEX does not need to match normal ints
     /*
      * Capture groups:
@@ -25,33 +27,36 @@ lazy_static! {
      * 3: multiplier prefix
      * 4: whether prefix is base-10 or base-2
      */
-    static ref SIZE_REGEX: Regex =
-        Regex::new(concat!("^",
-            "(?:([1-9][0-9]*)|([0-9]+\\.[0-9]+))",
-            "(K|M|G)(i)?",
-            "$")).unwrap();
-    static ref QUOTED_FILENAME_REGEX: Regex = {
-        let hash_regex = "(?:[[:xdigit:]][[:xdigit:]])+";
-        let length_regex = "0x([[:xdigit:]]+) bytes";
-        /*
-         * Capture groups:
-         * 0: entire thing
-         * 1: first branch of the |
-         * 2: quoted string for first branch
-         * 3: second branch of the |
-         * 4: quoted string for the second branch
-         * 5: file length for the second branch
-         */
-        let combined_regex = format!("^(?:({0} +{1})|({1} {2})){3}$",
-            hash_regex, QUOTED_STR_REGEX, length_regex, NEWLINE_REGEX);
-        Regex::new(&combined_regex).unwrap()
-    };
+    SIZE_REGEX.get_or_init(|| Regex::new(concat!(
+        "^",
+        "(?:([1-9][0-9]*)|([0-9]+\\.[0-9]+))",
+        "(K|M|G)(i)?",
+        "$")).unwrap())
 }
-pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
+static QUOTED_FILENAME_REGEX: OnceLock<Regex> = OnceLock::new();
+#[inline]
+fn get_quoted_filename_regex() -> &'static Regex {
+    let hash_regex = "(?:[[:xdigit:]][[:xdigit:]])+";
+    let length_regex = "0x([[:xdigit:]]+) bytes";
+    /*
+     * Capture groups:
+     * 0: entire thing
+     * 1: first branch of the |
+     * 2: quoted string for first branch
+     * 3: second branch of the |
+     * 4: quoted string for the second branch
+     * 5: file length for the second branch
+     */
+    let combined_regex = format!("^(?:({0} +{1})|({1} {2})){3}$",
+        hash_regex, QUOTED_STR_REGEX, length_regex, NEWLINE_REGEX);
+    QUOTED_FILENAME_REGEX.get_or_init(|| Regex::new(&combined_regex).unwrap())
+}
+
+pub(crate) fn size_str_to_num(input_str: &str) -> Result<block_t, SizeStrToNumErr> {
     match input_str.parse::<block_t>() {
-        Ok(val) => Some(val),
+        Ok(val) => Ok(val),
         Err(_) => {
-            let number_parts_res = SIZE_REGEX.captures(input_str);
+            let number_parts_res = get_size_regex().captures(input_str);
             if let Some(captures) = number_parts_res {
                 debug_assert!(captures.len() == 5);
                 assert!(captures.get(1).is_some() ^ captures.get(2).is_some());
@@ -65,41 +70,43 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
                     "G" => 3,
                     _ => unreachable!()
                 };
-                let unit_mult = base_mult.checked_pow(exponent)?;
+                let unit_mult = base_mult.checked_pow(exponent)
+                    .ok_or(SizeStrToNumErr::default())?;
                 let final_val: block_t;
                 if captures.get(1).is_some() {
                     let text_val: block_t = captures[1].parse().unwrap();
-                    final_val = unit_mult.checked_mul(text_val)?;
+                    final_val = unit_mult.checked_mul(text_val)
+                        .ok_or(SizeStrToNumErr::default())?;
                 } else if captures.get(2).is_some() {
                     // f64 can represent integers beyond u32 so no issue here
                     let mut text_val: f64 = captures[2].parse::<f64>().unwrap();
                     text_val *= unit_mult as f64;
                     assert!(text_val >= 0.0);
                     if text_val > block_t::MAX.into() {
-                        return None;
+                        return Err(SizeStrToNumErr::default());
                     }
                     // Overflow was previously checked-for
                     final_val = text_val.trunc() as block_t;
                 } else {
                     unreachable!();
                 }
-                Some(final_val)
+                Ok(final_val)
             } else {
-                None
+                Err(SizeStrToNumErr::default())
             }
         }
     }
 }
 
 // (String, Option<u64>) is (quoted_filename, file_len_if_present)
-pub(crate) fn extract_quoted_filename(line: &str) -> Option<(&str, Option<u64>)> {
-    let line_portions = QUOTED_FILENAME_REGEX.captures(line)?;
+pub(crate) fn extract_quoted_filename(line: &str) -> Result<(&str, Option<u64>), FilenameExtractionError> {
+    let line_portions = get_quoted_filename_regex().captures(line).ok_or(FilenameExtractionError::default())?;
     debug_assert!(line_portions.len() == 6);
     if line_portions.get(1).is_some() {
-        Some((line_portions.get(2).unwrap().as_str(), None))
+        Ok((line_portions.get(2).unwrap().as_str(), None))
     } else {
         debug_assert!(line_portions.get(3).is_some());
-        Some((line_portions.get(4).unwrap().as_str(),
+        Ok((line_portions.get(4).unwrap().as_str(),
             Some(u64::from_str_radix(&line_portions[5], 16).unwrap())))
     }
 }
@@ -158,13 +165,15 @@ cached!{
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
-pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Option<(Box<[u8]>, &str)> {
+pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Result<(Box<[u8]>, &str), HashExtractionError> {
     let parsing_regex = short_hash_regex(hex_digit_count);
-    let portions = parsing_regex.captures(line)?;
+    let portions = parsing_regex.captures(line)
+        .ok_or(HashExtractionError::default())?;
     debug_assert!(portions.len() == 3);
-    let hash_hex_vec = Vec::<u8>::from_hex(&portions[1]).ok()?;
+    let hash_hex_vec = Vec::<u8>::from_hex(&portions[1])
+        .map_err(|_| HashExtractionError::default())?;
     let quoted_name = portions.get(2).unwrap();
-    Some((hash_hex_vec.into_boxed_slice(), &line[quoted_name.range()]))
+    Ok((hash_hex_vec.into_boxed_slice(), &line[quoted_name.range()]))
 }
 
 cached!{
@@ -191,9 +200,10 @@ cached!{
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
-pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Option<(usize, HashRange)> {
+pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Result<(usize, HashRange), HashExtractionError> {
     let parsing_regex = long_hash_regex(hex_digit_count);
-    let portions = parsing_regex.captures(line)?;
+    let portions = parsing_regex.captures(line)
+        .ok_or(HashExtractionError::default())?;
     debug_assert!(portions.len() == 9);
     // Use unwraps+panics as regex should ensure validity already
     let file_id = usize::from_str(&portions[1]).unwrap();
@@ -215,10 +225,10 @@ pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Opt
     };
     let byte_range = BlockRange::new(byte_start, byte_end, byte_end_incl);
 
-    let hash_hex_vec = Vec::<u8>::from_hex(&portions[8]).ok()?;
+    let hash_hex_vec = Vec::<u8>::from_hex(&portions[8]).map_err(|_| HashExtractionError::default())?;
 
     let hash_range = HashRange::new(block_range, byte_range, hash_hex_vec.into_boxed_slice());
-    Some((file_id, hash_range))
+    Ok((file_id, hash_range))
 }
 
 #[cfg(test)]
