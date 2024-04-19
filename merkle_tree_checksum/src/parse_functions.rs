@@ -12,6 +12,8 @@ use hex::FromHex;
 use merkle_tree::{BlockRange, HashRange, block_t};
 use crate::error_types::HeaderParsingErr;
 
+use clap::builder::TypedValueParser;
+
 const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
 const NEWLINE_REGEX: &str = "(?:\\n|\\r\\n)?";
 
@@ -92,6 +94,34 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
             } else {
                 None
             }
+        }
+    }
+}
+
+// This struct is temporary until we complete migration to Clap v4
+// at which point we can use Fn(&str) -> Result<T, E>
+#[derive(Debug, Default, Clone)]
+pub(crate) struct BlockSizeParser {}
+impl TypedValueParser for BlockSizeParser {
+    type Value = block_t;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        // TODO: rework error messages after seeing how they're used
+        // Cannot use cmd.error() because that needs mutable cmd
+        let val_as_str = value.to_str().ok_or_else(|| {
+            clap::Error::raw(clap::ErrorKind::InvalidUtf8, "")
+        })?;
+        let block_size = size_str_to_num(val_as_str).ok_or_else(|| {
+            clap::Error::raw(clap::ErrorKind::InvalidUtf8, "")
+        })?;
+        match block_size {
+            0 => Err(clap::Error::raw(clap::ErrorKind::InvalidValue, "")),
+            val => Ok(val)
         }
     }
 }

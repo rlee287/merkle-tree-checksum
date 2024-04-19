@@ -18,8 +18,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
-use parse_functions::{size_str_to_num,
-    extract_short_hash_parts, extract_long_hash_parts};
+use parse_functions::{extract_long_hash_parts, extract_short_hash_parts, size_str_to_num, BlockSizeParser};
 use std::path::{Path,PathBuf};
 use format_functions::{escape_chars, title_center, abbreviate_filename};
 
@@ -105,7 +104,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .help("Branch factor for tree"))
         .arg(Arg::new("blocksize").long("block-length").short('l')
             .takes_value(true).default_value("4096")
-            .value_parser(clap::value_parser!(block_t).range(1..))
+            .value_parser(BlockSizeParser::default())
             .help("Block size to hash over, in bytes")
             .long_help(concat!("Block size to hash over, in bytes ",
                 "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
@@ -203,14 +202,12 @@ fn run() -> i32 {
                     };
                     collect_vec
                 },
-                // e.exits will never get actually called
+                // unwraps will always succeed due to default values
                 TreeParams {
-                    block_size: size_str_to_num(
-                        cmd_matches.value_of("blocksize").unwrap()).unwrap(),
-                    branch_factor: cmd_matches.value_of_t("branch")
-                        .unwrap_or_else(|e| e.exit()),
-                    hash_function: cmd_matches.value_of_t("hash")
-                        .unwrap_or_else(|e| e.exit())
+                    // block_size has a special parser invoked in parse_cli
+                    block_size: *cmd_matches.get_one("blocksize").unwrap(),
+                    branch_factor: *cmd_matches.get_one("branch").unwrap(),
+                    hash_function: *cmd_matches.get_one("hash").unwrap()
                 },
                 cmd_matches.is_present("short"),
                 None
@@ -424,9 +421,9 @@ fn run() -> i32 {
 
     let quiet_count = matches.occurrences_of("quiet");
 
-    // e.exit() never gets called because "jobs" has a default value
-    let thread_count = matches.value_of_t("jobs")
-        .unwrap_or_else(|e| e.exit());
+    // unwrap always succeeds because "jobs" has a default value
+    let thread_count = *matches.get_one::<usize>("jobs")
+        .unwrap();
 
     let hash_enum: HashFunctions = tree_params.hash_function;
     let block_size: block_t = tree_params.block_size;
