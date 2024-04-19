@@ -5,6 +5,15 @@ use merkle_tree::BlockRange;
 use hex::ToHex;
 use std::fmt;
 
+#[derive(Default, Debug, Clone)]
+pub struct SizeStrToNumErr {}
+impl fmt::Display for SizeStrToNumErr {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str("Could not parse size string")
+    }
+}
+impl std::error::Error for SizeStrToNumErr {}
+
 // No Copy to simplify refactoring if non-copy types get added later
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub(crate) enum PreHashError {

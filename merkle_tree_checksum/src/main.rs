@@ -18,8 +18,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
-use parse_functions::{size_str_to_num,
-    extract_short_hash_parts, extract_long_hash_parts};
+use parse_functions::{extract_long_hash_parts, extract_short_hash_parts, size_str_to_num};
 use std::path::{Path,PathBuf};
 use format_functions::{escape_chars, title_center, abbreviate_filename};
 
@@ -40,11 +39,13 @@ use utils::TreeParams;
 use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 
 use std::convert::TryFrom;
-use strum::VariantNames;
 
-use clap::{Command, Arg, ArgMatches};
-use indicatif::{ProgressBar, ProgressStyle,
-    ProgressDrawTarget, MultiProgress};
+use const_format::formatcp;
+
+use clap::{Command, Arg, ArgAction, ArgMatches};
+use clap::builder::EnumValueParser;
+
+use indicatif::{ProgressBar, ProgressStyle, ProgressDrawTarget, MultiProgress};
 use git_version::git_version;
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
@@ -62,6 +63,10 @@ const GEN_WRITE_ERR: i32 = 101; // Same exitcode as panic
 const VERIF_READ_ERR: i32 = 101; // Same exitcode as panic
 const VERIF_BAD_HEADER_ERR: i32 = 1;
 const VERIF_BAD_ENTRY_ERR: i32 = 3;
+
+const VERSION_STR: &str = formatcp!("{} ({}, rustc {})", crate_version!(),
+            git_version!(prefix = "git:", fallback = "unknown"),
+            env!("RUSTC_VERSION_STR"));
 
 // Use Options for inside because we know variant before we have the inside
 #[derive(Debug)]
@@ -86,82 +91,71 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         "can be significantly faster than sha256-based hashes ",
         "(sha224 and sha256) ",
         "on 64-bit systems that lack SHA hardware acceleration.");
-    let version_str = format!("{} ({}, rustc {})", crate_version!(),
-            git_version!(prefix = "git:", fallback = "unknown"),
-            env!("RUSTC_VERSION_STR"));
 
     let gen_hash_command = Command::new(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
-        .after_help(&*gen_hash_after_help)
+        .after_help(gen_hash_after_help)
         .arg(Arg::new("hash").long("hash-function").short('f')
-            .takes_value(true)
-            .default_value("sha256").possible_values(HashFunctions::VARIANTS)
-            .hide_possible_values(true)
+            .action(ArgAction::Set)
+            .value_parser(EnumValueParser::<HashFunctions>::new())
+            .default_value("sha256")
             .ignore_case(true)
             .help("Hash function to use"))
         .arg(Arg::new("branch").long("branch-factor").short('b')
-            .takes_value(true).default_value("4")
-            .validator(|input_str| -> Result<(), String> {
-                match input_str.parse::<branch_t>() {
-                    Ok(0) | Ok(1) => Err("branch must be >= 2".to_string()),
-                    Ok(_) => Ok(()),
-                    Err(err) => Err(err.to_string())
-                }
-            })
+            .action(ArgAction::Set)
+            .default_value("4")
+            .value_parser(clap::value_parser!(branch_t).range(2..))
             .help("Branch factor for tree"))
         .arg(Arg::new("blocksize").long("block-length").short('l')
-            .takes_value(true).default_value("4096")
-            .validator(|input_str| -> Result<(), String> {
-                match size_str_to_num(input_str) {
-                    Some(0) => Err("blocksize must be positive".to_owned()),
-                    Some(_) => Ok(()),
-                    None => Err("blocksize is invalid".to_owned())
-                }
-            })
+            .action(ArgAction::Set)
+            .default_value("4096")
+            .value_parser(size_str_to_num)
             .help("Block size to hash over, in bytes")
             .long_help(concat!("Block size to hash over, in bytes ",
                 "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
         .arg(Arg::new("output").long("output").short('o')
-            .takes_value(true).required(true)
+            .action(ArgAction::Set)
+            .required(true)
             .help("Output file"))
         .arg(Arg::new("overwrite").long("overwrite")
+            .action(ArgAction::SetTrue)
             .help("Overwrite output file if it already exists"))
         .arg(Arg::new("short").long("short").short('s')
+            .action(ArgAction::SetTrue)
             .help("Write only the summary hash")
             .long_help(concat!("Write only the summary hash to the output. ",
                 "This will make identifying corrupted locations impossible.")))
         .arg(Arg::new("FILES").required(true)
-            .takes_value(true).last(true)
-            .multiple_values(true).max_values(u16::MAX.into())
+            .action(ArgAction::Append)
+            .last(true)
+            .num_args(1..=u16::MAX.into())
             .help("Files to hash"));
     let check_hash_command = Command::new(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
         .arg(Arg::new("failfast").long("fail-fast")
+            .action(ArgAction::SetTrue)
             .help("Bail immediately on hash mismatch")
             .long_help(concat!("Skip checking the rest of the files ",
                 "when a hash mismatch is detected.")))
         .arg(Arg::new("FILE").required(true)
+            .action(ArgAction::Set)
             .help("File containing the hashes to check"));
 
     let clap_app = Command::new(crate_name!())
-        .version(&*version_str)
+        .version(VERSION_STR)
         .author(crate_authors!())
         .about(crate_description!())
         .after_help(HELP_STR_HASH_LIST)
         .subcommand_required(true)
         .arg(Arg::new("quiet").long("quiet").short('q')
-            .multiple_occurrences(true)
+            .action(ArgAction::Count)
             .help("Print less text")
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
         .arg(Arg::new("jobs").long("jobs").short('j')
-            .takes_value(true).default_value("4")
-            .validator(|input_str| -> Result<(), String> {
-                match input_str.parse::<usize>() {
-                    Ok(_) => Ok(()),
-                    Err(err) => Err(err.to_string())
-                }
-            })
+            .action(ArgAction::Set)
+            .default_value("4")
+            .value_parser(clap::value_parser!(usize))
             .help("Specify size of thread pool for hashing (set to 0 to disable)")
             .long_help(concat!(
                 "Specify size of thread pool for hashing. ",
@@ -199,7 +193,7 @@ fn run() -> i32 {
             (Vec<(String, Option<PreHashError>)>, TreeParams, bool, Option<u64>)
             = match cmd_chosen {
         HashCommand::GenerateHash(None) => {
-            let file_vec: Vec<_> = cmd_matches.values_of("FILES").unwrap().collect();
+            let file_vec: Vec<_> = cmd_matches.get_many::<String>("FILES").unwrap().collect();
             // Validators should already have caught errors
             (
                 {
@@ -220,21 +214,19 @@ fn run() -> i32 {
                     };
                     collect_vec
                 },
-                // e.exits will never get actually called
+                // unwraps will always succeed due to default values
                 TreeParams {
-                    block_size: size_str_to_num(
-                        cmd_matches.value_of("blocksize").unwrap()).unwrap(),
-                    branch_factor: cmd_matches.value_of_t("branch")
-                        .unwrap_or_else(|e| e.exit()),
-                    hash_function: cmd_matches.value_of_t("hash")
-                        .unwrap_or_else(|e| e.exit())
+                    // block_size has a special parser invoked in parse_cli
+                    block_size: *cmd_matches.get_one("blocksize").unwrap(),
+                    branch_factor: *cmd_matches.get_one("branch").unwrap(),
+                    hash_function: *cmd_matches.get_one("hash").unwrap()
                 },
-                cmd_matches.is_present("short"),
+                cmd_matches.get_flag("short"),
                 None
             )
         },
         HashCommand::VerifyHash(None) => {
-            let hash_file_str = cmd_matches.value_of("FILE").unwrap();
+            let hash_file_str = cmd_matches.get_one::<String>("FILE").unwrap();
             let hash_file = match File::open(hash_file_str) {
                 Ok(file) => file,
                 Err(e) => {
@@ -417,7 +409,7 @@ fn run() -> i32 {
             match err {
                 PreHashError::MismatchedLength(_) => {
                     assert!(matches!(cmd_chosen, HashCommand::VerifyHash(_)));
-                    if cmd_matches.is_present("failfast") {
+                    if cmd_matches.get_flag("failfast") {
                         abort = Err(VERIF_BAD_ENTRY_ERR);
                     }
                 },
@@ -439,11 +431,11 @@ fn run() -> i32 {
         return exit_code;
     }
 
-    let quiet_count = matches.occurrences_of("quiet");
+    let quiet_count = matches.get_count("quiet");
 
-    // e.exit() never gets called because "jobs" has a default value
-    let thread_count = matches.value_of_t("jobs")
-        .unwrap_or_else(|e| e.exit());
+    // unwrap always succeeds because "jobs" has a default value
+    let thread_count = *matches.get_one::<usize>("jobs")
+        .unwrap();
 
     let hash_enum: HashFunctions = tree_params.hash_function;
     let block_size: block_t = tree_params.block_size;
@@ -479,7 +471,7 @@ fn run() -> i32 {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
     if quiet_count < 2 && matches!(cmd_chosen, HashCommand::VerifyHash(_))
-            && !short_output && !cmd_matches.is_present("failfast") {
+            && !short_output && !cmd_matches.get_flag("failfast") {
         eprintln!(
             concat!("Warning: Verification of long hashes may fail early ",
                 "if the hash file is malformed, ",
@@ -489,8 +481,8 @@ fn run() -> i32 {
 
     match cmd_chosen {
         HashCommand::GenerateHash(None) => {
-            let write_file_name = cmd_matches.value_of("output").unwrap();
-            let overwrite = cmd_matches.is_present("overwrite");
+            let write_file_name = cmd_matches.get_one::<String>("output").unwrap();
+            let overwrite = cmd_matches.get_flag("overwrite");
             let open_result = match overwrite {
                 true => OpenOptions::new().write(true).create(true)
                     .truncate(true).open(write_file_name),
@@ -539,7 +531,7 @@ fn run() -> i32 {
             cmd_chosen = HashCommand::GenerateHash(Some(file_handle));
         },
         HashCommand::VerifyHash(None) => {
-            let read_file_name = cmd_matches.value_of("FILE").unwrap();
+            let read_file_name = cmd_matches.get_one::<String>("FILE").unwrap();
             let mut hash_file = match File::open(read_file_name) {
                 Ok(file) => file,
                 Err(e) => {
@@ -579,7 +571,7 @@ fn run() -> i32 {
                     } else {
                         eprintln!("Warning skipping file {}: {}", filename_str,
                             VerificationError::MalformedEntry(hash_line));
-                        if cmd_matches.is_present("failfast") {
+                        if cmd_matches.get_flag("failfast") {
                             return VERIF_BAD_ENTRY_ERR;
                         }
                     }
@@ -798,7 +790,7 @@ fn run() -> i32 {
             Err(err) => {
                 eprintln!("Error verifying file {}: {}", filename_str, err);
                 // TODO: error recovery when not using failfast
-                if cmd_matches.is_present("failfast") || !short_output {
+                if cmd_matches.get_flag("failfast") || !short_output {
                     return VERIF_BAD_ENTRY_ERR;
                 }
                 // Long output and failfast not specified

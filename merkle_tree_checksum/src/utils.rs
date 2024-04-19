@@ -8,7 +8,8 @@ use std::fmt;
 use crate::error_types::HeaderParsingErr;
 use crate::parse_functions::size_str_to_num;
 
-use strum_macros::{EnumString, VariantNames, FromRepr};
+use strum::VariantArray;
+use strum_macros::{IntoStaticStr, EnumString, VariantArray, FromRepr};
 
 use digest::Digest;
 use crate::crc32_utils::Crc32;
@@ -42,7 +43,7 @@ impl<T> StoredAndComputed<T> {
 impl<T: Copy> Copy for StoredAndComputed<T> {}
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[derive(EnumString, VariantNames, FromRepr, strum_macros::Display)]
+#[derive(IntoStaticStr, EnumString, VariantArray, FromRepr, strum_macros::Display)]
 #[allow(non_camel_case_types)]
 #[repr(u8)]
 /*
@@ -73,6 +74,26 @@ pub enum HashFunctions {
     #[strum(to_string = "blake2s256", serialize = "blake2s")]
     blake2s_256 = 0xcd,
     blake3 = 0xce
+}
+impl clap::ValueEnum for HashFunctions {
+    fn value_variants<'a>() -> &'a [Self] {
+        HashFunctions::VARIANTS
+    }
+
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        // Variants with aliases need to be handled separately
+        // TODO: is there a way to reuse serialize info from strum?
+        Some(match self {
+            Self::sha512_224 => clap::builder::PossibleValue::new("sha512_224").alias("sha512trunc224"),
+            Self::sha512_256 => clap::builder::PossibleValue::new("sha512_256").alias("sha512trunc256"),
+            Self::blake2b_512 => clap::builder::PossibleValue::new("blake2b512").alias("blake2b"),
+            Self::blake2s_256 => clap::builder::PossibleValue::new("blake2s256").alias("blake2s"),
+            others => {
+                let hash_func_str: &str = others.into();
+                clap::builder::PossibleValue::new(hash_func_str)
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,11 +174,11 @@ impl TreeParams {
             match HeaderElement::from_str(key) {
                 Ok(HeaderElement::BlockSize) => {
                     match size_str_to_num(value) {
-                        Some(0) | None => {
+                        Ok(0) | Err(_) => {
                             errors.push(HeaderParsingErr::BadParameterValue(
                                 HeaderElement::BlockSize, value.to_owned()));
                         }
-                        Some(val) => {
+                        Ok(val) => {
                             block_size_opt = Some(val);
                         }
                     }
@@ -261,5 +282,16 @@ mod tests {
             HashFunctions::sha512_224);
         assert_eq!(HashFunctions::from_str("sha512_256").unwrap(),
             HashFunctions::sha512_256);
+    }
+    #[test]
+    fn hash_enum_blake2_backcompat() {
+        assert_eq!(HashFunctions::from_str("blake2b").unwrap(),
+            HashFunctions::blake2b_512);
+        assert_eq!(HashFunctions::from_str("blake2s").unwrap(),
+            HashFunctions::blake2s_256);
+        assert_eq!(HashFunctions::from_str("blake2b512").unwrap(),
+            HashFunctions::blake2b_512);
+        assert_eq!(HashFunctions::from_str("blake2s256").unwrap(),
+            HashFunctions::blake2s_256);
     }
 }
