@@ -99,7 +99,6 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .action(ArgAction::Set)
             .value_parser(EnumValueParser::<HashFunctions>::new())
             .default_value("sha256")
-            .hide_possible_values(true)
             .ignore_case(true)
             .help("Hash function to use"))
         .arg(Arg::new("branch").long("branch-factor").short('b')
