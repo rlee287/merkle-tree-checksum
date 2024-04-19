@@ -140,7 +140,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         .after_help(HELP_STR_HASH_LIST)
         .subcommand_required(true)
         .arg(Arg::new("quiet").long("quiet").short('q')
-            .multiple_occurrences(true)
+            .action(clap::ArgAction::Count)
             .help("Print less text")
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
@@ -422,7 +422,7 @@ fn run() -> i32 {
         return exit_code;
     }
 
-    let quiet_count = matches.occurrences_of("quiet");
+    let quiet_count = matches.get_count("quiet");
 
     // unwrap always succeeds because "jobs" has a default value
     let thread_count = *matches.get_one::<usize>("jobs")
@@ -522,7 +522,7 @@ fn run() -> i32 {
             cmd_chosen = HashCommand::GenerateHash(Some(file_handle));
         },
         HashCommand::VerifyHash(None) => {
-            let read_file_name = cmd_matches.value_of("FILE").unwrap();
+            let read_file_name = cmd_matches.get_one::<String>("FILE").unwrap();
             let mut hash_file = match File::open(read_file_name) {
                 Ok(file) => file,
                 Err(e) => {
