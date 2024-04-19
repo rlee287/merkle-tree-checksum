@@ -93,6 +93,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         .about("Generates Merkle tree hashes")
         .after_help(&*gen_hash_after_help)
         .arg(Arg::new("hash").long("hash-function").short('f')
+            .action(clap::ArgAction::Set)
             .takes_value(true)
             .value_parser(EnumValueParser::<HashFunctions>::new())
             .default_value("sha256")
@@ -100,16 +101,19 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .ignore_case(true)
             .help("Hash function to use"))
         .arg(Arg::new("branch").long("branch-factor").short('b')
+            .action(clap::ArgAction::Set)
             .takes_value(true).default_value("4")
             .value_parser(clap::value_parser!(branch_t).range(2..))
             .help("Branch factor for tree"))
         .arg(Arg::new("blocksize").long("block-length").short('l')
+            .action(clap::ArgAction::Set)
             .takes_value(true).default_value("4096")
             .value_parser(BlockSizeParser::default())
             .help("Block size to hash over, in bytes")
             .long_help(concat!("Block size to hash over, in bytes ",
                 "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
         .arg(Arg::new("output").long("output").short('o')
+            .action(clap::ArgAction::Set)
             .takes_value(true).required(true)
             .help("Output file"))
         .arg(Arg::new("overwrite").long("overwrite")
@@ -121,6 +125,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .long_help(concat!("Write only the summary hash to the output. ",
                 "This will make identifying corrupted locations impossible.")))
         .arg(Arg::new("FILES").required(true)
+            .action(clap::ArgAction::Append)
             .takes_value(true).last(true)
             .multiple_values(true).max_values(u16::MAX.into())
             .help("Files to hash"));
@@ -132,6 +137,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .long_help(concat!("Skip checking the rest of the files ",
                 "when a hash mismatch is detected.")))
         .arg(Arg::new("FILE").required(true)
+            .action(clap::ArgAction::Set)
             .help("File containing the hashes to check"));
 
     let clap_app = Command::new(crate_name!())
@@ -146,6 +152,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
         .arg(Arg::new("jobs").long("jobs").short('j')
+            .action(clap::ArgAction::Set)
             .takes_value(true).default_value("4")
             .value_parser(clap::value_parser!(usize))
             .help("Specify size of thread pool for hashing (set to 0 to disable)")
