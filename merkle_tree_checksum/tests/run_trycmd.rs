@@ -10,6 +10,10 @@ const HASH_FUNCTION_LIST: &[&str] = &["crc32",
     "blake2b512", "blake2s256",
     "blake3"];
 
+// Hash functions with name aliases
+const HASH_FUNCTION_ALTNAME_LIST: &[&str] = &["sha512trunc224",
+    "sha512trunc256", "blake2b", "blake2s"];
+
 const INPUT_FILE_LIST: &[&str] =
     &["16_byte_file", "20_byte_file", "empty_file"];
 
@@ -21,6 +25,10 @@ const VERIFY_TOML: &str =
 r#"bin.name = "merkle_tree_checksum"
 args = "verify-hash -- hash_out"
 fs.sandbox = true"#;
+const VERIFY_ALTNAME_TOML: &str =
+r#"bin.name = "merkle_tree_checksum"
+args = "verify-hash -- hash_out_altname"
+fs.sandbox = true"#;
 const VERIFY_BAD_TEMPLATE: &str =
 r#"bin.name = "merkle_tree_checksum"
 args = "verify-hash -- FILENAME"
@@ -30,6 +38,7 @@ status.code = STATUS_CODE"#;
 // Set to true to debug generated temp files
 const SKIP_CLEANUP: bool = false;
 
+// Helper that runs all *.toml tests in dir_path and that copies and removes shared auxiliary files used by those *.toml tests
 fn cmd_test_helper<'a>(dir_path: &Path, prefix_names: impl IntoIterator<Item = &'a str>,
         mkdir_rmdir: bool) {
     let prefix_vec: Vec<_> = prefix_names.into_iter().collect();
@@ -123,7 +132,12 @@ fn verify_cmd_tests() {
         let mut toml_file = File::create(format!("tests/verify_cmd/{}_verify.toml",hash_func)).unwrap();
         write!(toml_file, "{}", VERIFY_TOML).unwrap();
     }
+    for hash_func in HASH_FUNCTION_ALTNAME_LIST {
+        let mut toml_file = File::create(format!("tests/verify_cmd/{}_verify.toml",hash_func)).unwrap();
+        write!(toml_file, "{}", VERIFY_ALTNAME_TOML).unwrap();
+    }
     let in_directories: Vec<PathBuf> = HASH_FUNCTION_LIST.iter()
+        .chain(HASH_FUNCTION_ALTNAME_LIST.iter())
         .map(|func| {
             PathBuf::from(format!("tests/verify_cmd/{}_verify.in", func))
         })
@@ -149,6 +163,9 @@ fn verify_cmd_tests() {
                 }
             }
             for hash_func in HASH_FUNCTION_LIST {
+                fs::remove_file(format!("tests/verify_cmd/{}_verify.toml",hash_func)).unwrap();
+            }
+            for hash_func in HASH_FUNCTION_ALTNAME_LIST {
                 fs::remove_file(format!("tests/verify_cmd/{}_verify.toml",hash_func)).unwrap();
             }
         }
