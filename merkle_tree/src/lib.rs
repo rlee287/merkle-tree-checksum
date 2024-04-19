@@ -66,7 +66,7 @@ where
     assert!(branch >= 2);
     file.seek(SeekFrom::Start(0)).unwrap();
     let file_len = seek_len(&mut file);
-    let block_count = match ceil_div(file_len, block_size.into()) {
+    let block_count = match file_len.div_ceil(block_size.into()) {
         0 => 1,
         n => n
     };

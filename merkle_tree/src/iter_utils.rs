@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use crate::merkle_utils::{ceil_div, exp_ceil_log, BlockRange, HashRange};
+use crate::merkle_utils::{exp_ceil_log, BlockRange, HashRange};
 use crate::merkle_utils::{branch_t, block_t};
 
 use num_iter::range_step;
@@ -12,7 +12,7 @@ use std::collections::HashMap;
 pub fn merkle_block_generator(file_len: u64, block_size: block_t, branch: branch_t) -> impl IntoIterator<Item = BlockRange> {
     assert!(block_size != 0);
     assert!(branch >= 2);
-    let block_count = match ceil_div(file_len, block_size.into()) {
+    let block_count = match file_len.div_ceil(block_size.into()) {
         0 => 1,
         n => n
     };

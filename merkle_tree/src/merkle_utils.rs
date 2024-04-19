@@ -14,14 +14,6 @@ pub type branch_t = u16;
 #[allow(non_camel_case_types)]
 pub type block_t = u32;
 
-pub(crate) const fn ceil_div(num: u64, denom: u64) -> u64 {
-    let result = num / denom;
-    // return
-    match num % denom {
-        0 => result,
-        _ => result + 1
-    }
-}
 pub(crate) const fn exp_ceil_log(number: u64, base: u16) -> u64 {
     let base_as_u64: u64 = base as u64;
     let mut result = 1;
@@ -32,12 +24,12 @@ pub(crate) const fn exp_ceil_log(number: u64, base: u16) -> u64 {
     result
 }
 pub const fn node_count(file_size: u64, block_size: block_t, branch: branch_t) -> u64 {
-    let block_count = ceil_div(file_size, block_size as u64);
+    let block_count = file_size.div_ceil(block_size as u64);
     let mut node_count = block_count;
     let mut node_at_layer_count = block_count;
     assert!(branch >= 2);
     while node_at_layer_count > 1 {
-        node_at_layer_count = ceil_div(node_at_layer_count, branch as u64);
+        node_at_layer_count = node_at_layer_count.div_ceil(branch as u64);
         node_count += node_at_layer_count;
     }
     match node_count {
