@@ -652,15 +652,6 @@ fn run() -> i32 {
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
-                /*let buf_size: usize = (block_size*(branch_factor as block_t))
-                    .clamp(4*1024, 256*1024).try_into().unwrap();
-                let file_buf = BufReader::with_capacity(
-                    buf_size, file_obj);*/
-                // Don't use BufReader because of a bad interaction with stream_position and seeks flushing the buffer
-                // See merkle_utils::read_into_slice and https://github.com/rust-lang/rust/issues/86832 for details
-                // Addition of the seek parameter *should* be a workaround 
-                // Do more testing and benchmarking later
-                // TODO: use rustversion cfg once this is fixed
                 let pb_wrap = pb_file.wrap_read(file_obj);
                 let result = merkle_tree_thunk(pb_wrap,
                     block_size, branch_factor, tx, thread_count);

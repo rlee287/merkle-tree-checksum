@@ -76,7 +76,8 @@ where
     let effective_block_count = exp_ceil_log(block_count, branch);
     let block_range = BlockRange::new(0, effective_block_count, false);
 
-    let mut file_chunk_iter = ChunkedReaderIter::new_with_rewind(file, usize::try_from(block_size).unwrap().try_into().unwrap(), NonZeroUsize::new(4).unwrap(), VectoredReadSelect::Yes);
+    // TODO: replace hardcoded multiplier "4" with something better
+    let mut file_chunk_iter = ChunkedReaderIter::new_with_rewind(file, usize::try_from(block_size).unwrap().try_into().unwrap(), NonZeroUsize::new((4*block_size).try_into().unwrap()).unwrap(), VectoredReadSelect::Yes);
 
     let threadpool_obj = match thread_count {
         0 => EvaluatorUnion::make_dummy(),
