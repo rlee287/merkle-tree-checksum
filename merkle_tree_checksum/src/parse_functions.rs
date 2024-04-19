@@ -10,9 +10,7 @@ use regex::Regex;
 use hex::FromHex;
 
 use merkle_tree::{BlockRange, HashRange, block_t};
-use crate::error_types::HeaderParsingErr;
-
-use clap::builder::TypedValueParser;
+use crate::error_types::{HeaderParsingErr, SizeStrToNumErr};
 
 const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
 const NEWLINE_REGEX: &str = "(?:\\n|\\r\\n)?";
@@ -54,9 +52,9 @@ fn get_quoted_filename_regex() -> &'static Regex {
     QUOTED_FILENAME_REGEX.get_or_init(|| Regex::new(&combined_regex).unwrap())
 }
 
-pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
+pub(crate) fn size_str_to_num(input_str: &str) -> Result<block_t, SizeStrToNumErr> {
     match input_str.parse::<block_t>() {
-        Ok(val) => Some(val),
+        Ok(val) => Ok(val),
         Err(_) => {
             let number_parts_res = get_size_regex().captures(input_str);
             if let Some(captures) = number_parts_res {
@@ -72,56 +70,30 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
                     "G" => 3,
                     _ => unreachable!()
                 };
-                let unit_mult = base_mult.checked_pow(exponent)?;
+                let unit_mult = base_mult.checked_pow(exponent)
+                    .ok_or(SizeStrToNumErr::default())?;
                 let final_val: block_t;
                 if captures.get(1).is_some() {
                     let text_val: block_t = captures[1].parse().unwrap();
-                    final_val = unit_mult.checked_mul(text_val)?;
+                    final_val = unit_mult.checked_mul(text_val)
+                        .ok_or(SizeStrToNumErr::default())?;
                 } else if captures.get(2).is_some() {
                     // f64 can represent integers beyond u32 so no issue here
                     let mut text_val: f64 = captures[2].parse::<f64>().unwrap();
                     text_val *= unit_mult as f64;
                     assert!(text_val >= 0.0);
                     if text_val > block_t::MAX.into() {
-                        return None;
+                        return Err(SizeStrToNumErr::default());
                     }
                     // Overflow was previously checked-for
                     final_val = text_val.trunc() as block_t;
                 } else {
                     unreachable!();
                 }
-                Some(final_val)
+                Ok(final_val)
             } else {
-                None
+                Err(SizeStrToNumErr::default())
             }
-        }
-    }
-}
-
-// This struct is temporary until we complete migration to Clap v4
-// at which point we can use Fn(&str) -> Result<T, E>
-#[derive(Debug, Default, Clone)]
-pub(crate) struct BlockSizeParser {}
-impl TypedValueParser for BlockSizeParser {
-    type Value = block_t;
-
-    fn parse_ref(
-        &self,
-        _cmd: &clap::Command,
-        _arg: Option<&clap::Arg>,
-        value: &std::ffi::OsStr,
-    ) -> Result<Self::Value, clap::Error> {
-        // TODO: rework error messages after seeing how they're used
-        // Cannot use cmd.error() because that needs mutable cmd
-        let val_as_str = value.to_str().ok_or_else(|| {
-            clap::Error::raw(clap::ErrorKind::InvalidUtf8, "")
-        })?;
-        let block_size = size_str_to_num(val_as_str).ok_or_else(|| {
-            clap::Error::raw(clap::ErrorKind::InvalidUtf8, "")
-        })?;
-        match block_size {
-            0 => Err(clap::Error::raw(clap::ErrorKind::InvalidValue, "")),
-            val => Ok(val)
         }
     }
 }

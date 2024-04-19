@@ -18,7 +18,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
-use parse_functions::{extract_long_hash_parts, extract_short_hash_parts, BlockSizeParser};
+use parse_functions::{extract_long_hash_parts, extract_short_hash_parts, size_str_to_num};
 use std::path::{Path,PathBuf};
 use format_functions::{escape_chars, title_center, abbreviate_filename};
 
@@ -39,6 +39,8 @@ use utils::TreeParams;
 use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 
 use std::convert::TryFrom;
+
+use const_format::formatcp;
 
 use clap::{Command, Arg, ArgAction, ArgMatches};
 use clap::builder::EnumValueParser;
@@ -61,6 +63,10 @@ const GEN_WRITE_ERR: i32 = 101; // Same exitcode as panic
 const VERIF_READ_ERR: i32 = 101; // Same exitcode as panic
 const VERIF_BAD_HEADER_ERR: i32 = 1;
 const VERIF_BAD_ENTRY_ERR: i32 = 3;
+
+const VERSION_STR: &str = formatcp!("{} ({}, rustc {})", crate_version!(),
+            git_version!(prefix = "git:", fallback = "unknown"),
+            env!("RUSTC_VERSION_STR"));
 
 // Use Options for inside because we know variant before we have the inside
 #[derive(Debug)]
@@ -85,16 +91,12 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         "can be significantly faster than sha256-based hashes ",
         "(sha224 and sha256) ",
         "on 64-bit systems that lack SHA hardware acceleration.");
-    let version_str = format!("{} ({}, rustc {})", crate_version!(),
-            git_version!(prefix = "git:", fallback = "unknown"),
-            env!("RUSTC_VERSION_STR"));
 
     let gen_hash_command = Command::new(GENERATE_HASH_CMD_NAME)
         .about("Generates Merkle tree hashes")
-        .after_help(&*gen_hash_after_help)
+        .after_help(gen_hash_after_help)
         .arg(Arg::new("hash").long("hash-function").short('f')
             .action(ArgAction::Set)
-            .takes_value(true)
             .value_parser(EnumValueParser::<HashFunctions>::new())
             .default_value("sha256")
             .hide_possible_values(true)
@@ -102,19 +104,19 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .help("Hash function to use"))
         .arg(Arg::new("branch").long("branch-factor").short('b')
             .action(ArgAction::Set)
-            .takes_value(true).default_value("4")
+            .default_value("4")
             .value_parser(clap::value_parser!(branch_t).range(2..))
             .help("Branch factor for tree"))
         .arg(Arg::new("blocksize").long("block-length").short('l')
             .action(ArgAction::Set)
-            .takes_value(true).default_value("4096")
-            .value_parser(BlockSizeParser::default())
+            .default_value("4096")
+            .value_parser(size_str_to_num)
             .help("Block size to hash over, in bytes")
             .long_help(concat!("Block size to hash over, in bytes ",
                 "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
         .arg(Arg::new("output").long("output").short('o')
             .action(ArgAction::Set)
-            .takes_value(true).required(true)
+            .required(true)
             .help("Output file"))
         .arg(Arg::new("overwrite").long("overwrite")
             .action(ArgAction::SetTrue)
@@ -126,8 +128,8 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
                 "This will make identifying corrupted locations impossible.")))
         .arg(Arg::new("FILES").required(true)
             .action(ArgAction::Append)
-            .takes_value(true).last(true)
-            .multiple_values(true).max_values(u16::MAX.into())
+            .last(true)
+            .num_args(1..=u16::MAX.into())
             .help("Files to hash"));
     let check_hash_command = Command::new(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
@@ -141,7 +143,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .help("File containing the hashes to check"));
 
     let clap_app = Command::new(crate_name!())
-        .version(&*version_str)
+        .version(VERSION_STR)
         .author(crate_authors!())
         .about(crate_description!())
         .after_help(HELP_STR_HASH_LIST)
@@ -153,7 +155,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
                 "Specify twice to suppress all output besides errors.")))
         .arg(Arg::new("jobs").long("jobs").short('j')
             .action(ArgAction::Set)
-            .takes_value(true).default_value("4")
+            .default_value("4")
             .value_parser(clap::value_parser!(usize))
             .help("Specify size of thread pool for hashing (set to 0 to disable)")
             .long_help(concat!(

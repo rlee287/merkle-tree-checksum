@@ -80,15 +80,18 @@ impl clap::ValueEnum for HashFunctions {
         HashFunctions::VARIANTS
     }
 
-    fn to_possible_value<'a>(&self) -> Option<clap::PossibleValue<'a>> {
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
         // Variants with aliases need to be handled separately
         // TODO: is there a way to reuse serialize info from strum?
         Some(match self {
-            Self::sha512_224 => clap::PossibleValue::new("sha512_224").alias("sha512trunc224"),
-            Self::sha512_256 => clap::PossibleValue::new("sha512_256").alias("sha512trunc256"),
-            Self::blake2b_512 => clap::PossibleValue::new("blake2b512").alias("blake2b"),
-            Self::blake2s_256 => clap::PossibleValue::new("blake2s256").alias("blake2s"),
-            others => clap::PossibleValue::new(others.into())
+            Self::sha512_224 => clap::builder::PossibleValue::new("sha512_224").alias("sha512trunc224"),
+            Self::sha512_256 => clap::builder::PossibleValue::new("sha512_256").alias("sha512trunc256"),
+            Self::blake2b_512 => clap::builder::PossibleValue::new("blake2b512").alias("blake2b"),
+            Self::blake2s_256 => clap::builder::PossibleValue::new("blake2s256").alias("blake2s"),
+            others => {
+                let hash_func_str: &str = others.into();
+                clap::builder::PossibleValue::new(hash_func_str)
+            }
         })
     }
 }
@@ -171,11 +174,11 @@ impl TreeParams {
             match HeaderElement::from_str(key) {
                 Ok(HeaderElement::BlockSize) => {
                     match size_str_to_num(value) {
-                        Some(0) | None => {
+                        Ok(0) | Err(_) => {
                             errors.push(HeaderParsingErr::BadParameterValue(
                                 HeaderElement::BlockSize, value.to_owned()));
                         }
-                        Some(val) => {
+                        Ok(val) => {
                             block_size_opt = Some(val);
                         }
                     }
