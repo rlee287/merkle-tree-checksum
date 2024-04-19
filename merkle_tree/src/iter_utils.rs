@@ -5,7 +5,6 @@ use crate::merkle_utils::{branch_t, block_t};
 
 use num_iter::range_step;
 
-use async_recursion::async_recursion;
 use genawaiter::rc::{Co, Gen};
 
 use std::collections::HashMap;
@@ -26,7 +25,6 @@ pub fn merkle_block_generator(file_len: u64, block_size: block_t, branch: branch
     })
 }
 
-#[async_recursion(?Send)]
 async fn merkle_block_generator_helper(state: &Co<BlockRange>,
         block_count: u64, block_range: BlockRange,
         branch: branch_t) {
@@ -51,7 +49,7 @@ async fn merkle_block_generator_helper(state: &Co<BlockRange>,
                     block_increment) {
                 let slice_end = slice_start+block_increment;
                 let slice_range = BlockRange::new(slice_start, slice_end, false);
-                merkle_block_generator_helper(state, block_count, slice_range, branch).await;
+                Box::pin(merkle_block_generator_helper(state, block_count, slice_range, branch)).await;
             }
             let start_block = block_range.start();
             let end_block = block_range.end()-match block_range.include_end() {
