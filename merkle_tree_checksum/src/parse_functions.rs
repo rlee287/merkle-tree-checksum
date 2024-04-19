@@ -107,8 +107,8 @@ impl TypedValueParser for BlockSizeParser {
 
     fn parse_ref(
         &self,
-        cmd: &clap::Command,
-        arg: Option<&clap::Arg>,
+        _cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
         value: &std::ffi::OsStr,
     ) -> Result<Self::Value, clap::Error> {
         // TODO: rework error messages after seeing how they're used

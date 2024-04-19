@@ -18,7 +18,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
-use parse_functions::{extract_long_hash_parts, extract_short_hash_parts, size_str_to_num, BlockSizeParser};
+use parse_functions::{extract_long_hash_parts, extract_short_hash_parts, BlockSizeParser};
 use std::path::{Path,PathBuf};
 use format_functions::{escape_chars, title_center, abbreviate_filename};
 
@@ -40,11 +40,11 @@ use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 
 use std::convert::TryFrom;
 
-use clap::{Command, Arg, ArgMatches};
-use indicatif::{ProgressBar, ProgressStyle,
-    ProgressDrawTarget, MultiProgress};
-use git_version::git_version;
+use clap::{Command, Arg, ArgAction, ArgMatches};
 use clap::builder::EnumValueParser;
+
+use indicatif::{ProgressBar, ProgressStyle, ProgressDrawTarget, MultiProgress};
+use git_version::git_version;
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
@@ -93,7 +93,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         .about("Generates Merkle tree hashes")
         .after_help(&*gen_hash_after_help)
         .arg(Arg::new("hash").long("hash-function").short('f')
-            .action(clap::ArgAction::Set)
+            .action(ArgAction::Set)
             .takes_value(true)
             .value_parser(EnumValueParser::<HashFunctions>::new())
             .default_value("sha256")
@@ -101,43 +101,43 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
             .ignore_case(true)
             .help("Hash function to use"))
         .arg(Arg::new("branch").long("branch-factor").short('b')
-            .action(clap::ArgAction::Set)
+            .action(ArgAction::Set)
             .takes_value(true).default_value("4")
             .value_parser(clap::value_parser!(branch_t).range(2..))
             .help("Branch factor for tree"))
         .arg(Arg::new("blocksize").long("block-length").short('l')
-            .action(clap::ArgAction::Set)
+            .action(ArgAction::Set)
             .takes_value(true).default_value("4096")
             .value_parser(BlockSizeParser::default())
             .help("Block size to hash over, in bytes")
             .long_help(concat!("Block size to hash over, in bytes ",
                 "(SI prefixes K,M,G and IEC prefixes Ki,Mi,Gi accepted")))
         .arg(Arg::new("output").long("output").short('o')
-            .action(clap::ArgAction::Set)
+            .action(ArgAction::Set)
             .takes_value(true).required(true)
             .help("Output file"))
         .arg(Arg::new("overwrite").long("overwrite")
-            .action(clap::ArgAction::SetTrue)
+            .action(ArgAction::SetTrue)
             .help("Overwrite output file if it already exists"))
         .arg(Arg::new("short").long("short").short('s')
-            .action(clap::ArgAction::SetTrue)
+            .action(ArgAction::SetTrue)
             .help("Write only the summary hash")
             .long_help(concat!("Write only the summary hash to the output. ",
                 "This will make identifying corrupted locations impossible.")))
         .arg(Arg::new("FILES").required(true)
-            .action(clap::ArgAction::Append)
+            .action(ArgAction::Append)
             .takes_value(true).last(true)
             .multiple_values(true).max_values(u16::MAX.into())
             .help("Files to hash"));
     let check_hash_command = Command::new(VERIFY_HASH_CMD_NAME)
         .about("Verify Merkle tree hashes")
         .arg(Arg::new("failfast").long("fail-fast")
-            .action(clap::ArgAction::SetTrue)
+            .action(ArgAction::SetTrue)
             .help("Bail immediately on hash mismatch")
             .long_help(concat!("Skip checking the rest of the files ",
                 "when a hash mismatch is detected.")))
         .arg(Arg::new("FILE").required(true)
-            .action(clap::ArgAction::Set)
+            .action(ArgAction::Set)
             .help("File containing the hashes to check"));
 
     let clap_app = Command::new(crate_name!())
@@ -147,12 +147,12 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         .after_help(HELP_STR_HASH_LIST)
         .subcommand_required(true)
         .arg(Arg::new("quiet").long("quiet").short('q')
-            .action(clap::ArgAction::Count)
+            .action(ArgAction::Count)
             .help("Print less text")
             .long_help(concat!("Specify once to hide progress bars. ",
                 "Specify twice to suppress all output besides errors.")))
         .arg(Arg::new("jobs").long("jobs").short('j')
-            .action(clap::ArgAction::Set)
+            .action(ArgAction::Set)
             .takes_value(true).default_value("4")
             .value_parser(clap::value_parser!(usize))
             .help("Specify size of thread pool for hashing (set to 0 to disable)")
