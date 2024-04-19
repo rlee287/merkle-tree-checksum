@@ -8,7 +8,8 @@ use std::fmt;
 use crate::error_types::HeaderParsingErr;
 use crate::parse_functions::size_str_to_num;
 
-use strum_macros::{EnumString, VariantNames, FromRepr};
+use strum::VariantArray;
+use strum_macros::{IntoStaticStr, EnumString, VariantArray, FromRepr};
 
 use digest::Digest;
 use crate::crc32_utils::Crc32;
@@ -42,7 +43,7 @@ impl<T> StoredAndComputed<T> {
 impl<T: Copy> Copy for StoredAndComputed<T> {}
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-#[derive(EnumString, VariantNames, FromRepr, strum_macros::Display)]
+#[derive(IntoStaticStr, EnumString, VariantArray, FromRepr, strum_macros::Display)]
 #[allow(non_camel_case_types)]
 #[repr(u8)]
 /*
@@ -73,6 +74,23 @@ pub enum HashFunctions {
     #[strum(to_string = "blake2s256", serialize = "blake2s")]
     blake2s_256 = 0xcd,
     blake3 = 0xce
+}
+impl clap::ValueEnum for HashFunctions {
+    fn value_variants<'a>() -> &'a [Self] {
+        HashFunctions::VARIANTS
+    }
+
+    fn to_possible_value<'a>(&self) -> Option<clap::PossibleValue<'a>> {
+        // Variants with aliases need to be handled separately
+        // TODO: is there a way to reuse serialize info from strum?
+        Some(match self {
+            Self::sha512_224 => clap::PossibleValue::new("sha512_224").alias("sha512trunc224"),
+            Self::sha512_256 => clap::PossibleValue::new("sha512_256").alias("sha512trunc256"),
+            Self::blake2b_512 => clap::PossibleValue::new("blake2b512").alias("blake2b"),
+            Self::blake2s_256 => clap::PossibleValue::new("blake2s256").alias("blake2s"),
+            others => clap::PossibleValue::new(others.into())
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -39,12 +39,12 @@ use utils::TreeParams;
 use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 
 use std::convert::TryFrom;
-use strum::VariantNames;
 
 use clap::{Command, Arg, ArgMatches};
 use indicatif::{ProgressBar, ProgressStyle,
     ProgressDrawTarget, MultiProgress};
 use git_version::git_version;
+use clap::builder::EnumValueParser;
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
@@ -94,7 +94,8 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
         .after_help(&*gen_hash_after_help)
         .arg(Arg::new("hash").long("hash-function").short('f')
             .takes_value(true)
-            .default_value("sha256").possible_values(HashFunctions::VARIANTS)
+            .value_parser(EnumValueParser::<HashFunctions>::new())
+            .default_value("sha256")
             .hide_possible_values(true)
             .ignore_case(true)
             .help("Hash function to use"))
