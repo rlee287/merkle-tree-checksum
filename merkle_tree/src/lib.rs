@@ -6,8 +6,10 @@ mod thread_pool;
 
 use std::io::prelude::*;
 use std::io::SeekFrom;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use num_iter::range_step;
+
+use read_chunk_iter::{ChunkedReaderIter, VectoredReadSelect};
 
 use digest::{Digest, OutputSizeUser};
 use generic_array::GenericArray;
@@ -20,6 +22,7 @@ pub use iter_utils::*;
 
 use thread_pool::{Awaitable, DummyAwaitable};
 use thread_pool::{FnEvaluator, DummyEvaluator, ThreadPoolEvaluator};
+use std::num::NonZeroUsize;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum HelperErrSignal {
@@ -73,12 +76,14 @@ where
     let effective_block_count = exp_ceil_log(block_count, branch);
     let block_range = BlockRange::new(0, effective_block_count, false);
 
+    let mut file_chunk_iter = ChunkedReaderIter::new_with_rewind(file, usize::try_from(block_size).unwrap().try_into().unwrap(), NonZeroUsize::new(4).unwrap(), VectoredReadSelect::Yes);
+
     let threadpool_obj = match thread_count {
         0 => EvaluatorUnion::make_dummy(),
         _ => EvaluatorUnion::make_threadpool(
             "merkle_tree_threadpool".to_owned(), thread_count)
     };
-    let hash_out_result = merkle_tree_file_helper::<_, D, _>(&mut file,
+    let hash_out_result = merkle_tree_file_helper::<_, D, _>(&mut file_chunk_iter,
         block_size, block_count, block_range, branch,
         hash_queue, &threadpool_obj).await_();
     let hash_out = hash_out_result.ok()?;
@@ -98,7 +103,7 @@ fn merkle_tree_file_helper<F, D, C>(file: &mut F,
         threadpool: &EvaluatorUnion)
         -> Box<dyn Awaitable<HashResult<D>>>
 where
-    F: Read + Seek,
+    F: Iterator<Item = Result<Box<[u8]>, std::io::Error>>,
     D: Digest + 'static,
     C: Consumer<HashRange> + Send + Clone + 'static,
 {
@@ -122,22 +127,12 @@ where
         let mut current_pos = block_range.start()*(block_size as u64);
         // TODO: reduce indirection
         if block_interval == 1 {
-            let block_size_as_usize: usize = block_size.try_into().unwrap();
-
-            // Should be optimized out in release mode
-            #[cfg(debug_assertions)]
-            {
-                let current_pos_actual = file.stream_position().unwrap();
-                debug_assert_eq!(current_pos_actual, current_pos);
-            }
-
-
-            let file_read_result = read_exact_vec(file, Some(current_pos),
-                block_size_as_usize);
+            // Get the next chunk, and replace None with no bytes read
+            let file_read_result = file.next().unwrap_or(Ok(Box::new([])));
             let file_vec: Vec<u8>;
 
             if let Ok(vec) = file_read_result {
-                file_vec = vec;
+                file_vec = vec.into();
             } else {
                 let read_err = DummyAwaitable::new(Err(HelperErrSignal::FileReadErr));
                 return Box::new(read_err)
@@ -145,11 +140,7 @@ where
 
             current_pos += file_vec.len() as u64;
             let end_byte_file = current_pos.saturating_sub(1);
-            #[cfg(debug_assertions)]
-            {
-                let end_byte_file_actual = file.stream_position().unwrap().saturating_sub(1);
-                debug_assert_eq!(end_byte_file_actual, end_byte_file);
-            }
+
             let hash_future = threadpool.compute(move || {
                 let block_range = BlockRange::new(start_block, end_block, true);
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);
@@ -208,11 +199,7 @@ where
                 }
             }
             let end_byte_file = current_pos.saturating_sub(1);
-            #[cfg(debug_assertions)]
-            {
-                let end_byte_file_actual = file.stream_position().unwrap().saturating_sub(1);
-                debug_assert_eq!(end_byte_file_actual, end_byte_file);
-            }
+
             let hash_future = threadpool.compute(move || {
                 let block_range = BlockRange::new(start_block, end_block, true);
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);

@@ -16,6 +16,7 @@ num-iter = "0.1"
 genawaiter = {version = "0.99", default-features = false}
 
 crossbeam-channel = "0.5"
+read_chunk_iter = "0.2.0"
 [dependencies.oneshot]
 version = "0.1"
 default-features = false
