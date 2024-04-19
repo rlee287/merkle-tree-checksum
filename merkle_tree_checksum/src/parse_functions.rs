@@ -10,7 +10,7 @@ use regex::Regex;
 use hex::FromHex;
 
 use merkle_tree::{BlockRange, HashRange, block_t};
-use crate::error_types::HeaderParsingErr;
+use crate::error_types::{FilenameExtractionError, HashExtractionError, HeaderParsingErr};
 
 const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
 const NEWLINE_REGEX: &str = "(?:\\n|\\r\\n)?";
@@ -97,14 +97,14 @@ pub(crate) fn size_str_to_num(input_str: &str) -> Option<block_t> {
 }
 
 // (String, Option<u64>) is (quoted_filename, file_len_if_present)
-pub(crate) fn extract_quoted_filename(line: &str) -> Option<(&str, Option<u64>)> {
-    let line_portions = get_quoted_filename_regex().captures(line)?;
+pub(crate) fn extract_quoted_filename(line: &str) -> Result<(&str, Option<u64>), FilenameExtractionError> {
+    let line_portions = get_quoted_filename_regex().captures(line).ok_or(FilenameExtractionError::default())?;
     debug_assert!(line_portions.len() == 6);
     if line_portions.get(1).is_some() {
-        Some((line_portions.get(2).unwrap().as_str(), None))
+        Ok((line_portions.get(2).unwrap().as_str(), None))
     } else {
         debug_assert!(line_portions.get(3).is_some());
-        Some((line_portions.get(4).unwrap().as_str(),
+        Ok((line_portions.get(4).unwrap().as_str(),
             Some(u64::from_str_radix(&line_portions[5], 16).unwrap())))
     }
 }
@@ -163,13 +163,15 @@ cached!{
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
-pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Option<(Box<[u8]>, &str)> {
+pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Result<(Box<[u8]>, &str), HashExtractionError> {
     let parsing_regex = short_hash_regex(hex_digit_count);
-    let portions = parsing_regex.captures(line)?;
+    let portions = parsing_regex.captures(line)
+        .ok_or(HashExtractionError::default())?;
     debug_assert!(portions.len() == 3);
-    let hash_hex_vec = Vec::<u8>::from_hex(&portions[1]).ok()?;
+    let hash_hex_vec = Vec::<u8>::from_hex(&portions[1])
+        .map_err(|_| HashExtractionError::default())?;
     let quoted_name = portions.get(2).unwrap();
-    Some((hash_hex_vec.into_boxed_slice(), &line[quoted_name.range()]))
+    Ok((hash_hex_vec.into_boxed_slice(), &line[quoted_name.range()]))
 }
 
 cached!{
@@ -196,9 +198,10 @@ cached!{
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
-pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Option<(usize, HashRange)> {
+pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Result<(usize, HashRange), HashExtractionError> {
     let parsing_regex = long_hash_regex(hex_digit_count);
-    let portions = parsing_regex.captures(line)?;
+    let portions = parsing_regex.captures(line)
+        .ok_or(HashExtractionError::default())?;
     debug_assert!(portions.len() == 9);
     // Use unwraps+panics as regex should ensure validity already
     let file_id = usize::from_str(&portions[1]).unwrap();
@@ -220,10 +223,10 @@ pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Opt
     };
     let byte_range = BlockRange::new(byte_start, byte_end, byte_end_incl);
 
-    let hash_hex_vec = Vec::<u8>::from_hex(&portions[8]).ok()?;
+    let hash_hex_vec = Vec::<u8>::from_hex(&portions[8]).map_err(|_| HashExtractionError::default())?;
 
     let hash_range = HashRange::new(block_range, byte_range, hash_hex_vec.into_boxed_slice());
-    Some((file_id, hash_range))
+    Ok((file_id, hash_range))
 }
 
 #[cfg(test)]

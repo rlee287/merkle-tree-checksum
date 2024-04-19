@@ -54,6 +54,24 @@ impl fmt::Display for HeaderParsingErr {
 }
 impl std::error::Error for HeaderParsingErr {}
 
+#[derive(Default, Debug, Clone)]
+pub(crate) struct FilenameExtractionError {}
+impl fmt::Display for FilenameExtractionError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str("Unable to extract filename")
+    }
+}
+impl std::error::Error for FilenameExtractionError {}
+
+#[derive(Default, Debug, Clone)]
+pub(crate) struct HashExtractionError {}
+impl fmt::Display for HashExtractionError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str("Unable to extract expected hash")
+    }
+}
+impl std::error::Error for HashExtractionError {}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub(crate) enum VerificationError {
     MismatchedFileID, // No StoredAndComputed as this would not be helpful

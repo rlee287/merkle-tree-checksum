@@ -336,7 +336,7 @@ fn run() -> i32 {
                         return VERIF_READ_ERR;
                     }
                 }
-                if let Some((quoted_name, len_option)) = parse_functions::extract_quoted_filename(&next_line) {
+                if let Ok((quoted_name, len_option)) = parse_functions::extract_quoted_filename(&next_line) {
                     assert_eq!(len_option.is_none(), is_short_hash);
                     let unquoted_name = match enquote::unquote(quoted_name) {
                         Ok(s) => s,
@@ -573,7 +573,7 @@ fn run() -> i32 {
                     // Still check line format, and warn if entry is malformed
                     let hash_parts = extract_short_hash_parts(&hash_line,
                         2*expected_hash_len);
-                    if let Some((_, quoted_name)) = hash_parts {
+                    if let Ok((_, quoted_name)) = hash_parts {
                         assert_eq!(filename_str,
                             enquote::unquote(quoted_name).unwrap());
                     } else {
@@ -589,7 +589,7 @@ fn run() -> i32 {
                         let chars_read = r.read_line(&mut hash_line).unwrap();
                         let hash_parts = extract_long_hash_parts(&hash_line,
                             2*expected_hash_len);
-                        if let Some((read_index, _)) = hash_parts {
+                        if let Ok((read_index, _)) = hash_parts {
                             if read_index == file_index + 1 {
                                 r.seek_relative(-i64::try_from(chars_read).unwrap()).unwrap();
                                 break;
@@ -708,7 +708,7 @@ fn run() -> i32 {
 
                         let hash_parts = extract_long_hash_parts(
                             &line, 2*expected_hash_len);
-                        if let Some((file_id, file_hash_range)) = hash_parts {
+                        if let Ok((file_id, file_hash_range)) = hash_parts {
                             if file_id != file_index {
                                 hash_loop_status = Err(VerificationError::MismatchedFileID);
                                 break;
@@ -765,7 +765,7 @@ fn run() -> i32 {
                     r.read_line(&mut line).unwrap();
 
                     let hash_parts = extract_short_hash_parts(&line, 2*expected_hash_len);
-                    if let Some((file_hash_box, quoted_name)) = hash_parts {
+                    if let Ok((file_hash_box, quoted_name)) = hash_parts {
                         assert_eq!(filename_str,
                             enquote::unquote(quoted_name).unwrap());
                         if final_hash == file_hash_box {
