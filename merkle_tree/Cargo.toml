@@ -11,15 +11,12 @@ publish = false
 digest = "0.10"
 generic-array = "0.14"
 num-iter = "0.1"
+pollster = "0.3"
 # The more popular "generator" library has potential unsoundness issues
 # Prefering genawaiter with more documentation and no stack-switch shenanigans
 genawaiter = {version = "0.99", default-features = false}
 
 crossbeam-channel = "0.5"
-[dependencies.oneshot]
-version = "0.1"
-default-features = false
-features = ["std"]
 
 [dev-dependencies]
 sha2 = "0.10"

@@ -4,6 +4,13 @@ mod merkle_utils;
 mod iter_utils;
 mod thread_pool;
 
+use std::future::Future;
+use std::future::ready as instant_future;
+use std::pin::Pin;
+use pollster::block_on;
+
+use thread_pool::EagerAsyncThreadPool;
+
 use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::convert::TryInto;
@@ -18,8 +25,7 @@ pub use merkle_utils::{branch_t, block_t};
 
 pub use iter_utils::*;
 
-use thread_pool::{Awaitable, DummyAwaitable};
-use thread_pool::{FnEvaluator, DummyEvaluator, ThreadPoolEvaluator};
+//use thread_pool::{FnEvaluator, DummyEvaluator, ThreadPoolEvaluator};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum HelperErrSignal {
@@ -28,7 +34,7 @@ enum HelperErrSignal {
     ConsumerErr
 }
 
-#[derive(Debug)]
+/*#[derive(Debug)]
 enum EvaluatorUnion {
     Dummy(DummyEvaluator),
     ThreadPool(ThreadPoolEvaluator)
@@ -52,7 +58,7 @@ impl FnEvaluator for EvaluatorUnion {
             Self::ThreadPool(eval) => eval.compute(func)
         }
     }
-}
+}*/
 
 pub fn merkle_hash_file<F, D, C>(mut file: F,
         block_size: block_t, branch: branch_t,
@@ -60,6 +66,7 @@ pub fn merkle_hash_file<F, D, C>(mut file: F,
 where
     F: Read + Seek,
     D: Digest + 'static,
+    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: Unpin,
     C: Consumer<HashRange> + Send + Clone + 'static
 {
     assert!(block_size != 0);
@@ -74,13 +81,12 @@ where
     let block_range = BlockRange::new(0, effective_block_count, false);
 
     let threadpool_obj = match thread_count {
-        0 => EvaluatorUnion::make_dummy(),
-        _ => EvaluatorUnion::make_threadpool(
-            "merkle_tree_threadpool".to_owned(), thread_count)
+        0 => None,
+        n => Some(EagerAsyncThreadPool::new(n))
     };
-    let hash_out_result = merkle_tree_file_helper::<_, D, _>(&mut file,
+    let hash_out_result = pollster::block_on(merkle_tree_file_helper::<_, D, _>(&mut file,
         block_size, block_count, block_range, branch,
-        hash_queue, &threadpool_obj).await_();
+        hash_queue, threadpool_obj.as_ref()));
     let hash_out = hash_out_result.ok()?;
     debug_assert_eq!(file_len, hash_out.1);
     return Some(hash_out.0.to_vec().into_boxed_slice());
@@ -95,11 +101,12 @@ fn merkle_tree_file_helper<F, D, C>(file: &mut F,
         block_size: block_t, block_count: u64, block_range: BlockRange,
         branch: branch_t,
         hash_queue: C,
-        threadpool: &EvaluatorUnion)
-        -> Box<dyn Awaitable<HashResult<D>>>
+        threadpool: Option<&EagerAsyncThreadPool>)
+        -> Pin<Box<dyn Future<Output = HashResult<D>>>>
 where
     F: Read + Seek,
     D: Digest + 'static,
+    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: Unpin,
     C: Consumer<HashRange> + Send + Clone + 'static,
 {
     if block_range.include_end() {
@@ -139,8 +146,8 @@ where
             if let Ok(vec) = file_read_result {
                 file_vec = vec;
             } else {
-                let read_err = DummyAwaitable::new(Err(HelperErrSignal::FileReadErr));
-                return Box::new(read_err)
+                let read_err = instant_future(Err(HelperErrSignal::FileReadErr));
+                return Box::pin(read_err)
             }
 
             current_pos += file_vec.len() as u64;
@@ -150,7 +157,8 @@ where
                 let end_byte_file_actual = file.stream_position().unwrap().saturating_sub(1);
                 debug_assert_eq!(end_byte_file_actual, end_byte_file);
             }
-            let hash_future = threadpool.compute(move || {
+
+            let hash_closure = move || {
                 let block_range = BlockRange::new(start_block, end_block, true);
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);
 
@@ -165,7 +173,11 @@ where
                 } else {
                     return Err(HelperErrSignal::ConsumerErr);
                 }
-            });
+            };
+            let hash_future: Pin<Box<dyn Future<Output = _>>> = match threadpool {
+                Some(ref threadpool) => Box::pin(threadpool.enqueue_task(hash_closure)),
+                None => Box::pin(instant_future(hash_closure()))
+            };
             return hash_future;
         } else {
             // power-of-branch check
@@ -185,7 +197,7 @@ where
             let mut hash_input: Vec<digest::Output<D>> = Vec::with_capacity(
                 subhash_awaitables.len());
             for awaitable in subhash_awaitables {
-                match awaitable.await_() {
+                match block_on(awaitable) {
                     Ok(subhash) => {
                         hash_input.push(subhash.0);
                         current_pos = subhash.1;
@@ -198,12 +210,12 @@ where
                         break;
                     },
                     Err(HelperErrSignal::FileReadErr) => {
-                        let dummy_err = DummyAwaitable::new(Err(HelperErrSignal::FileReadErr));
-                        return Box::new(dummy_err);
+                        let dummy_err = instant_future(Err(HelperErrSignal::FileReadErr));
+                        return Box::pin(dummy_err);
                     },
                     Err(HelperErrSignal::ConsumerErr) => {
-                        let dummy_err = DummyAwaitable::new(Err(HelperErrSignal::ConsumerErr));
-                        return Box::new(dummy_err);
+                        let dummy_err = instant_future(Err(HelperErrSignal::ConsumerErr));
+                        return Box::pin(dummy_err);
                     }
                 }
             }
@@ -213,7 +225,7 @@ where
                 let end_byte_file_actual = file.stream_position().unwrap().saturating_sub(1);
                 debug_assert_eq!(end_byte_file_actual, end_byte_file);
             }
-            let hash_future = threadpool.compute(move || {
+            let hash_closure = move || {
                 let block_range = BlockRange::new(start_block, end_block, true);
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);
 
@@ -230,11 +242,15 @@ where
                 } else {
                     return Err(HelperErrSignal::ConsumerErr);
                 }
-            });
+            };
+            let hash_future: Pin<Box<dyn Future<Output = _>>> = match threadpool {
+                Some(ref threadpool) => Box::pin(threadpool.enqueue_task(hash_closure)),
+                None => Box::pin(instant_future(hash_closure()))
+            };
             return hash_future;
         }
     } else {
-        let dummy_err = DummyAwaitable::new(Err(HelperErrSignal::FileEOF));
-        return Box::new(dummy_err);
+        let dummy_err = instant_future(Err(HelperErrSignal::FileEOF));
+        return Box::pin(dummy_err);
     }
 }
