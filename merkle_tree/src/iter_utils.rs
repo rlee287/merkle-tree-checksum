@@ -8,6 +8,7 @@ use num_iter::range_step;
 use genawaiter::rc::{Co, Gen};
 
 use std::collections::HashMap;
+use std::hash::Hash;
 
 pub fn merkle_block_generator(file_len: u64, block_size: block_t, branch: branch_t) -> impl IntoIterator<Item = BlockRange> {
     assert!(block_size != 0);
@@ -61,33 +62,80 @@ async fn merkle_block_generator_helper(state: &Co<BlockRange>,
     }
 }
 
-pub fn reorder_hashrange_iter<T, U> (ref_ordered_iter: T, mut hashrange_iter: U) -> impl IntoIterator<Item = HashRange>
+// Iterator that reorders iterator I_B with type B and extractable key type A to match iterator I_A
+// The iterators should be the same length, and I_A should never repeat
+// TODO: a binary heap would be better but I don't know how to impl Ord for BlockRange;
+#[derive(Debug, Clone)]
+struct ReorderHashIter<A, B, IterA, IterB, F>
+where
+    A: PartialEq+Eq,
+    F: Fn(&B) -> A,
+    IterA: Iterator<Item = A>,
+    IterB: Iterator<Item = B>
+{
+    iter_ordered: IterA,
+    iter_to_reorder: IterB,
+    func_extract: F,
+    reorder_hashmap: HashMap<A, B>
+}
+impl<A, B, IterA, IterB, F> ReorderHashIter<A, B, IterA, IterB, F>
+where
+    A: PartialEq+Eq,
+    F: Fn(&B) -> A,
+    IterA: Iterator<Item = A>,
+    IterB: Iterator<Item = B>
+{
+    pub fn new<IntoIterA, IntoIterB>(ref_ordered_iter: IntoIterA, reordered_iter: IntoIterB, extractor_func: F) -> Self
+    where
+        IntoIterA: IntoIterator<Item = A, IntoIter = IterA>,
+        IntoIterB: IntoIterator<Item = B, IntoIter = IterB>
+    {
+        Self {
+            iter_ordered: ref_ordered_iter.into_iter(),
+            iter_to_reorder: reordered_iter.into_iter(),
+            func_extract: extractor_func,
+            reorder_hashmap: HashMap::new()
+        }
+    }
+}
+impl<A, B, IterA, IterB, F> Iterator for ReorderHashIter<A, B, IterA, IterB, F>
+where
+    A: Hash+PartialEq+Eq,
+    F: Fn(&B) -> A,
+    IterA: Iterator<Item = A>,
+    IterB: Iterator<Item = B>
+{
+    type Item = B;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_expected_key = match self.iter_ordered.next() {
+            Some(k) => k,
+            None => return None
+        };
+        loop {
+            if self.reorder_hashmap.contains_key(&next_expected_key) {
+                let stored_obj = self.reorder_hashmap.remove(&next_expected_key).unwrap();
+                return Some(stored_obj);
+            } else {
+                let unordered_next = match self.iter_to_reorder.next() {
+                    Some(v) => v,
+                    None => return None
+                };
+                let unordered_key = (self.func_extract)(&unordered_next);
+                if unordered_key == next_expected_key {
+                    return Some(unordered_next);
+                } else {
+                    assert!(self.reorder_hashmap.insert(unordered_key, unordered_next).is_none());
+                }
+            }
+        }
+    }
+}
+
+pub fn reorder_hashrange_iter<T, U> (ref_ordered_iter: T, hashrange_iter: U) -> impl IntoIterator<Item = HashRange>
 where
     T: Iterator<Item = BlockRange>,
     U: Iterator<Item = HashRange>
 {
-    Gen::new(|state| async move {
-        // TODO: a binary heap would be better but I don't know how to impl Ord for BlockRange;
-        let mut ooo_block_storage = HashMap::<BlockRange, HashRange>::new();
-        for expected_block in ref_ordered_iter {
-            let mut yielded_element = false;
-            while !yielded_element {
-                if ooo_block_storage.contains_key(&expected_block) {
-                    let stored_hashrange = ooo_block_storage.remove(&expected_block).unwrap();
-                    yielded_element = true;
-                    state.yield_(stored_hashrange).await;
-                } else {
-                    let next_hashrange = hashrange_iter.next().unwrap();
-                    if next_hashrange.block_range() == expected_block {
-                        yielded_element = true;
-                        state.yield_(next_hashrange).await;
-                    } else {
-                        ooo_block_storage.insert(next_hashrange.block_range(), next_hashrange).ok_or(()).unwrap_err();
-                    }
-                }
-            }
-        }
-        assert!(ooo_block_storage.is_empty());
-        assert!(hashrange_iter.next().is_none());
-    })
+    ReorderHashIter::new(ref_ordered_iter, hashrange_iter, |hashrange| hashrange.block_range())
 }
