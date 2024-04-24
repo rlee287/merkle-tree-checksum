@@ -105,7 +105,7 @@ impl Drop for EagerAsyncThreadPool {
         // Drop the send handle, which should hang up the recv channels in the threads
         self.task_tx = None;
         // Join the threads to wait for tasks to finish
-        let handle_vec = std::mem::replace(&mut self.thread_handles, Vec::new());
+        let handle_vec = std::mem::take(&mut self.thread_handles);
         for handle in handle_vec {
             handle.join().unwrap();
         }

@@ -195,7 +195,8 @@ where
                 }
             };
             let hash_future = match threadpool {
-                Some(ref threadpool) => threadpool.enqueue_task(hash_closure).into(),
+                Some(threadpool) => threadpool.enqueue_task(hash_closure).into(),
+                // Err() for returned error, Ok() for no panic
                 None => DummyHandle::new(Ok(hash_closure())).into()
             };
             return hash_future;
@@ -266,7 +267,8 @@ where
                 }
             };
             let hash_future = match threadpool {
-                Some(ref threadpool) => threadpool.enqueue_task(hash_closure).into(),
+                Some(threadpool) => threadpool.enqueue_task(hash_closure).into(),
+                // Ok() for no panic
                 None => DummyHandle::new(Ok(hash_closure())).into()
             };
             return hash_future;
