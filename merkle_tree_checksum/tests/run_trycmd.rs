@@ -45,8 +45,8 @@ fn cmd_test_helper<'a>(dir_path: &Path, prefix_names: impl IntoIterator<Item = &
     for prefix in prefix_vec.iter() {
         let mut in_dir_path = PathBuf::from(dir_path);
         in_dir_path.push(format!("{}.in", prefix));
-        if mkdir_rmdir {
-            fs::create_dir(&in_dir_path).unwrap();
+        if mkdir_rmdir && !in_dir_path.is_dir() {
+            fs::create_dir(&in_dir_path).expect(format!("Could not create {}", in_dir_path.display()).as_ref());
         }
         for input_file in INPUT_FILE_LIST {
             let mut dest_path = in_dir_path.clone();
@@ -95,7 +95,9 @@ fn gen_ref_cmd_tests() {
         })
         .collect();
     for in_dir in in_directories.iter() {
-        fs::create_dir(in_dir).unwrap();
+        if !in_dir.is_dir() {
+            fs::create_dir(in_dir).expect(format!("Could not create {}", in_dir.display()).as_ref());
+        }
         for input_file in INPUT_FILE_LIST {
             let mut dest_path = in_dir.clone();
             dest_path.push(input_file);
@@ -203,7 +205,9 @@ fn verify_bad_cmd_tests() {
         write!(toml_file, "{}", toml_content).unwrap();
         drop(toml_file);
 
-        fs::create_dir(&in_dir).unwrap();
+        if !in_dir.is_dir() {
+            fs::create_dir(&in_dir).expect(format!("Could not create {}", in_dir.display()).as_ref());
+        }
 
         let mut inputfile_path = in_dir.clone();
         inputfile_path.push(input_name);
