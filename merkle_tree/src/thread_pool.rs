@@ -7,9 +7,21 @@ use std::thread::Result as ThreadResult;
 use std::panic::{catch_unwind, UnwindSafe};
 use std::sync::{Arc, Mutex, Condvar};
 
+#[cfg(feature = "hwlocality")]
+use hwlocality::Topology;
+#[cfg(feature = "hwlocality")]
+use hwlocality::topology::support::{DiscoverySupport, FeatureSupport};
+#[cfg(feature = "hwlocality")]
+use hwlocality::object::depth::NormalDepth;
+#[cfg(feature = "hwlocality")]
+use hwlocality::topology::DistributeFlags;
+#[cfg(feature = "hwlocality")]
+use hwlocality::cpu::cpuset::CpuSet;
+
 use crossbeam_channel::{Sender, Receiver, bounded};
 
 use std::fmt::Debug;
+use hwlocality::cpu::binding::CpuBindingFlags;
 
 #[delegatable_trait]
 pub(crate) trait Joinable<T> {
@@ -56,6 +68,25 @@ impl<T> Joinable<T> for DummyHandle<T> {
     }
 }
 
+#[cfg(feature = "hwlocality")]
+fn get_cpu_affinities(topology: &Topology, thread_count: usize) -> Option<Vec<CpuSet>> {
+    // Check that we have the required featureset
+    if !topology.supports(FeatureSupport::discovery, DiscoverySupport::pu_count) {
+        return None;
+    }
+    let Some(cpu_support) = topology.feature_support().cpu_binding() else {
+        return None;
+    };
+    if !(cpu_support.get_thread() && cpu_support.set_thread()) {
+        return None;
+    }
+    topology.distribute_items(
+        &[&topology.root_object()],
+        thread_count,
+        NormalDepth::MAX,
+        DistributeFlags::empty()).ok()
+}
+
 #[derive(Debug)]
 pub(crate) struct EagerAsyncThreadPool {
     thread_handles: Vec<JoinHandle<()>>,
@@ -65,11 +96,41 @@ impl EagerAsyncThreadPool {
     pub fn new(thread_count: usize) -> Self {
         let (tx, rx) = bounded(16);
         let mut handle_vec = Vec::with_capacity(thread_count);
+        #[cfg(feature = "hwlocality")]
+        let thread_binding_infos = {
+            let topology = Topology::new();
+            match topology {
+                Ok(topo_ref) => {
+                    let cpusets = get_cpu_affinities(&topo_ref, thread_count);
+                    match cpusets {
+                        Some(vec) => Some((topo_ref, vec)),
+                        None => None
+                    }
+                }
+                Err(_) => None
+            }
+        };
+
         for i in 0..thread_count {
             let rx_copy: Receiver<Box<dyn FnOnce()+Send>> = rx.clone();
+
+            #[cfg(feature = "hwlocality")]
+            let thread_binding_info = thread_binding_infos.as_ref()
+                .map(|(topo, vec)| (topo.clone(), vec[i].clone()));
+
             handle_vec.push(thread::Builder::new()
                 .name(format!("eager_async_threadpool-{}", i))
                 .spawn(move || {
+                    #[cfg(feature = "hwlocality")]
+                    if let Some((topo, cpuset)) = thread_binding_info {
+                        let tid = hwlocality::current_thread_id();
+                        let mut cpuset = cpuset.clone();
+                        cpuset.singlify();
+
+                        // Do the actual thread binding-if this fails we at most
+                        // have degraded performance
+                        let _ = topo.bind_thread_cpu(tid, &cpuset, CpuBindingFlags::empty());
+                    }
                     while let Ok(func) = rx_copy.recv() {
                         func();
                     }
