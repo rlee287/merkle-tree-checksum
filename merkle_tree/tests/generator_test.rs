@@ -25,7 +25,7 @@ fn test_tree_iter() {
     let data_cursor = Cursor::new(data);
 
     merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, Some(tx), 0).unwrap();
+        (data_cursor, 4, 2, tx, 0).unwrap();
     for (blockrange, hashrange) in merkle_block_generator(data_len, 4, 2)
         .into_iter().zip(rx.into_iter()) {
             assert_eq!(blockrange, hashrange.block_range());

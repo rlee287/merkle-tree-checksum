@@ -648,13 +648,7 @@ fn run() -> i32 {
             pb_hash.set_message("Hash");
         }
 
-        let (tx, rx) = match short_output {
-            false => {
-                let (tx, rx) = bounded_channel::<HashRange>(16);
-                (Some(tx), Some(rx))
-            },
-            true => (None, None)
-        };
+        let (tx, rx) = bounded_channel::<HashRange>(16);
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
@@ -677,7 +671,12 @@ fn run() -> i32 {
 
         let mut hash_loop_status: Result<(), VerificationError> = Ok(());
 
-        if let Some(rx) = rx {
+        if short_output {
+            // Consume sent messages without doing anything with them
+            for _ in rx {
+                pb_hash.inc(1);
+            }
+        } else {
             let block_iter = merkle_block_generator(
                 file_size, block_size, branch_factor).into_iter();
             for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
