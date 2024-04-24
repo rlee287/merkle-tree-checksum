@@ -81,7 +81,7 @@ impl<T> From<ThreadPoolTaskHandle<T>> for EitherJoinable<T> {
 
 pub fn merkle_hash_file<F, D, C>(mut file: F,
         block_size: block_t, branch: branch_t,
-        hash_queue: C, thread_count: usize) -> Option<Box<[u8]>>
+        hash_queue: Option<C>, thread_count: usize) -> Option<Box<[u8]>>
 where
     F: Read + Seek,
     D: Digest + 'static,
@@ -119,7 +119,7 @@ type HashResult<T> = Result<(HashArray<T>, u64), HelperErrSignal>;
 fn merkle_tree_file_helper<F, D, C>(file: &mut F,
         block_size: block_t, block_count: u64, block_range: BlockRange,
         branch: branch_t,
-        hash_queue: C,
+        hash_queue: Option<C>,
         threadpool: Option<&EagerAsyncThreadPool>)
         -> EitherJoinable<ThreadResult<HashResult<D>>>
 where
@@ -188,10 +188,14 @@ where
                 let hash_result = digest_obj.finalize();
                 let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
 
-                if hash_queue.accept(block_hash_result).is_ok() {
-                    return Ok((hash_result, current_pos));
-                } else {
-                    return Err(HelperErrSignal::ConsumerErr);
+                match hash_queue {
+                    None => Ok((hash_result, current_pos)),
+                    Some(tx) => {
+                        match tx.accept(block_hash_result) {
+                            Ok(()) => Ok((hash_result, current_pos)),
+                            Err(_) => Err(HelperErrSignal::ConsumerErr)
+                        }
+                    }
                 }
             };
             let hash_future = match threadpool {
@@ -260,10 +264,14 @@ where
                 let hash_result = digest_obj.finalize();
                 let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
 
-                if hash_queue.accept(block_hash_result).is_ok() {
-                    return Ok((hash_result, current_pos));
-                } else {
-                    return Err(HelperErrSignal::ConsumerErr);
+                match hash_queue {
+                    None => Ok((hash_result, current_pos)),
+                    Some(tx) => {
+                        match tx.accept(block_hash_result) {
+                            Ok(()) => Ok((hash_result, current_pos)),
+                            Err(_) => Err(HelperErrSignal::ConsumerErr)
+                        }
+                    }
                 }
             };
             let hash_future = match threadpool {

@@ -24,11 +24,10 @@ fn test_empty_string() {
     let ref_hash = Sha256::digest(b"\x00");
     let ref_hash_ref = ref_hash.as_slice();
 
-    let throwaway_consumer = ThrowawayConsumer::default();
     let empty_cursor = Cursor::new(b"");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (empty_cursor, 4, 2, throwaway_consumer, 0);
+        (empty_cursor, 4, 2, None::<ThrowawayConsumer>, 0);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
@@ -37,11 +36,10 @@ fn test_partial_block_helper(thread_count: usize) {
     let ref_hash = Sha256::digest(b"\x00yz");
     let ref_hash_ref = ref_hash.as_slice();
 
-    let throwaway_consumer = ThrowawayConsumer::default();
     let data_cursor = Cursor::new(b"yz");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, throwaway_consumer, thread_count);
+        (data_cursor, 4, 2, None::<ThrowawayConsumer>, thread_count);
     let tree_hash_box = tree_hash.unwrap();
     assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
 }
@@ -68,7 +66,7 @@ fn test_tree_helper(thread_count: usize) {
     let data_cursor = Cursor::new(data);
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, tx, thread_count);
+        (data_cursor, 4, 2, Some(tx), thread_count);
     let tree_hash_box = tree_hash.unwrap();
 
     let rx_iter = rx.into_iter();
