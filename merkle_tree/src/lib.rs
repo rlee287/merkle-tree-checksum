@@ -35,32 +35,6 @@ enum HelperErrSignal {
     ConsumerErr
 }
 
-/*#[derive(Debug)]
-enum EvaluatorUnion {
-    Dummy(DummyEvaluator),
-    ThreadPool(ThreadPoolEvaluator)
-}
-impl EvaluatorUnion {
-    fn make_dummy() -> Self {
-        Self::Dummy(DummyEvaluator::new())
-    }
-    fn make_threadpool(name: String, num_threads: usize) -> Self {
-        Self::ThreadPool(ThreadPoolEvaluator::new(name, num_threads))
-    }
-}
-impl FnEvaluator for EvaluatorUnion {
-    fn compute<T, F>(&self, func: F) -> Box<dyn Awaitable<T>>
-    where
-        T: 'static + Send,
-        F: 'static + Send + Fn() -> T
-    {
-        match self {
-            Self::Dummy(eval) => eval.compute(func),
-            Self::ThreadPool(eval) => eval.compute(func)
-        }
-    }
-}*/
-
 #[derive(Debug)]
 #[derive(Delegate)]
 #[delegate(Joinable<T>)]
@@ -112,10 +86,9 @@ where
 }
 
 type HashArray<T> = GenericArray<u8, <T as OutputSizeUser>::OutputSize>;
-type HashResult<T> = Result<(HashArray<T>, u64), HelperErrSignal>;
-// TODO: static checking with https://github.com/project-oak/rust-verification-tools
-// Block range includes the first and excludes the last
 // Second element of tuple is seek position
+type HashResult<T> = Result<(HashArray<T>, u64), HelperErrSignal>;
+
 fn merkle_tree_file_helper<F, D, C>(file: &mut F,
         block_size: block_t, block_count: u64, block_range: BlockRange,
         branch: branch_t,
