@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 use std::thread::{self, JoinHandle};
+use std::thread::Result as ThreadResult;
+use std::panic::{catch_unwind, UnwindSafe};
 use std::sync::{Arc, Mutex, TryLockError};
 use std::future::Future;
 
@@ -86,12 +88,12 @@ impl EagerAsyncThreadPool {
         }
         Self {thread_handles: handle_vec, task_tx: Some(tx)}
     }
-    pub fn enqueue_task<T: Unpin+Send+'static>(&self, func: impl FnOnce() -> T + Send + 'static) -> ThreadPoolTaskHandle<T> {
+    pub fn enqueue_task<T: Unpin+Send+'static>(&self, func: impl FnOnce() -> T + UnwindSafe + Send + 'static) -> ThreadPoolTaskHandle<ThreadResult<T>> {
         let tx_handle = self.task_tx.as_ref().unwrap();
         let state_handle = Arc::new(Mutex::new(ThreadPoolTaskState::Unpolled));
         let state_handle_thread = state_handle.clone();
         tx_handle.send(Box::new(move || {
-            let return_value = func();
+            let return_value = catch_unwind(func);
 
             // After calling user code, update the state accordingly
             let mut state_guard = state_handle_thread.lock().unwrap();
@@ -159,7 +161,7 @@ mod test {
             }));
         }
 
-        let mut result_data: Vec<_> = result_handles.into_iter().map(|future| block_on(future)).collect();
+        let mut result_data: Vec<_> = result_handles.into_iter().map(|future| block_on(future)).collect::<Result<Vec<_>, _>>().unwrap();
 
         let end_instant = Instant::now();
         let time_duration = end_instant - start_instant;

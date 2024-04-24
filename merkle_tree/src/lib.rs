@@ -7,6 +7,8 @@ mod thread_pool;
 use std::future::Future;
 use std::future::ready as instant_future;
 use std::pin::Pin;
+use std::thread::Result as ThreadResult;
+use std::panic::UnwindSafe;
 use pollster::block_on;
 
 use thread_pool::EagerAsyncThreadPool;
@@ -66,8 +68,8 @@ pub fn merkle_hash_file<F, D, C>(mut file: F,
 where
     F: Read + Seek,
     D: Digest + 'static,
-    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: Unpin,
-    C: Consumer<HashRange> + Send + Clone + 'static
+    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: Unpin + UnwindSafe,
+    C: Consumer<HashRange> + Clone + Send + UnwindSafe + 'static
 {
     assert!(block_size != 0);
     assert!(branch >= 2);
@@ -86,7 +88,7 @@ where
     };
     let hash_out_result = pollster::block_on(merkle_tree_file_helper::<_, D, _>(&mut file,
         block_size, block_count, block_range, branch,
-        hash_queue, threadpool_obj.as_ref()));
+        hash_queue, threadpool_obj.as_ref())).unwrap();
     let hash_out = hash_out_result.ok()?;
     debug_assert_eq!(file_len, hash_out.1);
     return Some(hash_out.0.to_vec().into_boxed_slice());
@@ -102,12 +104,12 @@ fn merkle_tree_file_helper<F, D, C>(file: &mut F,
         branch: branch_t,
         hash_queue: C,
         threadpool: Option<&EagerAsyncThreadPool>)
-        -> Pin<Box<dyn Future<Output = HashResult<D>>>>
+        -> Pin<Box<dyn Future<Output = ThreadResult<HashResult<D>>>>>
 where
     F: Read + Seek,
     D: Digest + 'static,
-    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: Unpin,
-    C: Consumer<HashRange> + Send + Clone + 'static,
+    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: Unpin + UnwindSafe,
+    C: Consumer<HashRange> + Clone + Send + UnwindSafe + 'static,
 {
     if block_range.include_end() {
         assert!(block_range.start() <= block_range.end());
@@ -146,7 +148,7 @@ where
             if let Ok(vec) = file_read_result {
                 file_vec = vec;
             } else {
-                let read_err = instant_future(Err(HelperErrSignal::FileReadErr));
+                let read_err = instant_future(Ok(Err(HelperErrSignal::FileReadErr)));
                 return Box::pin(read_err)
             }
 
@@ -176,7 +178,7 @@ where
             };
             let hash_future: Pin<Box<dyn Future<Output = _>>> = match threadpool {
                 Some(ref threadpool) => Box::pin(threadpool.enqueue_task(hash_closure)),
-                None => Box::pin(instant_future(hash_closure()))
+                None => Box::pin(instant_future(Ok(hash_closure())))
             };
             return hash_future;
         } else {
@@ -197,7 +199,7 @@ where
             let mut hash_input: Vec<digest::Output<D>> = Vec::with_capacity(
                 subhash_awaitables.len());
             for awaitable in subhash_awaitables {
-                match block_on(awaitable) {
+                match block_on(awaitable).unwrap() {
                     Ok(subhash) => {
                         hash_input.push(subhash.0);
                         current_pos = subhash.1;
@@ -210,11 +212,11 @@ where
                         break;
                     },
                     Err(HelperErrSignal::FileReadErr) => {
-                        let dummy_err = instant_future(Err(HelperErrSignal::FileReadErr));
+                        let dummy_err = instant_future(Ok(Err(HelperErrSignal::FileReadErr)));
                         return Box::pin(dummy_err);
                     },
                     Err(HelperErrSignal::ConsumerErr) => {
-                        let dummy_err = instant_future(Err(HelperErrSignal::ConsumerErr));
+                        let dummy_err = instant_future(Ok(Err(HelperErrSignal::ConsumerErr)));
                         return Box::pin(dummy_err);
                     }
                 }
@@ -245,12 +247,12 @@ where
             };
             let hash_future: Pin<Box<dyn Future<Output = _>>> = match threadpool {
                 Some(ref threadpool) => Box::pin(threadpool.enqueue_task(hash_closure)),
-                None => Box::pin(instant_future(hash_closure()))
+                None => Box::pin(instant_future(Ok(hash_closure())))
             };
             return hash_future;
         }
     } else {
-        let dummy_err = instant_future(Err(HelperErrSignal::FileEOF));
+        let dummy_err = instant_future(Ok(Err(HelperErrSignal::FileEOF)));
         return Box::pin(dummy_err);
     }
 }
