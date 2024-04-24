@@ -1,68 +1,58 @@
 #![forbid(unsafe_code)]
 
+use ambassador::delegatable_trait;
+
 use std::thread::{self, JoinHandle};
 use std::thread::Result as ThreadResult;
 use std::panic::{catch_unwind, UnwindSafe};
-use std::sync::{Arc, Mutex, TryLockError};
-use std::future::Future;
-
-use std::ops::{Deref, DerefMut};
+use std::sync::{Arc, Mutex, Condvar};
 
 use crossbeam_channel::{Sender, Receiver, bounded};
 
 use std::fmt::Debug;
 
-#[derive(Debug)]
-enum ThreadPoolTaskState<T> {
-    Unpolled,
-    Polled(std::task::Waker),
-    Complete(T),
-    ValueExtracted
+#[delegatable_trait]
+pub(crate) trait Joinable<T> {
+    fn join(self) -> T;
 }
 
 #[derive(Debug)]
 pub(crate) struct ThreadPoolTaskHandle<T> {
-    state: Arc<Mutex<ThreadPoolTaskState<T>>>
+    thread_out: Arc<Mutex<Option<T>>>,
+    thread_waiter: Arc<Condvar>
 }
 impl<T> ThreadPoolTaskHandle<T> {
-    fn new(state: Arc<Mutex<ThreadPoolTaskState<T>>>) -> Self {
-        Self {state}
+    fn new(thread_out: Arc<Mutex<Option<T>>>, thread_waiter: Arc<Condvar>) -> Self {
+        Self {thread_out, thread_waiter}
     }
 }
-impl<T: Unpin> Future for ThreadPoolTaskHandle<T> {
-    type Output = T;
-
-    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+impl<T> Joinable<T> for ThreadPoolTaskHandle<T> {
+    fn join(self) -> T {
         /*
          * Try to get lock for the current state
          * If locked, the thread executor is finishing up (thus still executing)
          * Propagate panics from the task as well if mutex is poisoned
          */
-        let mut state_guard = match self.state.try_lock() {
-            Ok(guard) => guard,
-            Err(TryLockError::WouldBlock) => {return std::task::Poll::Pending},
-            Err(TryLockError::Poisoned(e)) => {panic!("Task panicked: {}", e)}
-        };
-        match *state_guard {
-            // The `Future` trait does not specify what `poll` must return after completion
-            // Since we already yielded the final value it makes the most sense to panic
-            // We should never hit this case anyways if the futures are .awaited
-            ThreadPoolTaskState::ValueExtracted => panic!("TaskHandle polled again after completion"),
-            ThreadPoolTaskState::Complete(_) => {
-                // Replace the stored state and then extract the final value
-                let state_w_completed = std::mem::replace(state_guard.deref_mut(), ThreadPoolTaskState::ValueExtracted);
-                match state_w_completed {
-                    ThreadPoolTaskState::Complete(val) => std::task::Poll::Ready(val),
-                    _ => unreachable!()
-                }
-            },
-            ThreadPoolTaskState::Unpolled | ThreadPoolTaskState::Polled(_) => {
-                // Replace the stored waker
-                let waker = cx.waker();
-                *state_guard.deref_mut() = ThreadPoolTaskState::Polled(waker.clone());
-                std::task::Poll::Pending
-            }
-        }
+        let state_guard = self.thread_out.lock().unwrap();
+        // Use condvar to block until task is complete
+        let mut state_guard = self.thread_waiter.wait_while(state_guard, |out| out.is_none()).unwrap();
+        // The wrapped state must be Some() by now
+        state_guard.take().unwrap()
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct DummyHandle<T> {
+    data: T
+}
+impl<T> DummyHandle<T> {
+    pub fn new(data: T) -> Self {
+        Self {data}
+    }
+}
+impl<T> Joinable<T> for DummyHandle<T> {
+    fn join(self) -> T {
+        self.data
     }
 }
 
@@ -88,42 +78,25 @@ impl EagerAsyncThreadPool {
         }
         Self {thread_handles: handle_vec, task_tx: Some(tx)}
     }
-    pub fn enqueue_task<T: Unpin+Send+'static>(&self, func: impl FnOnce() -> T + UnwindSafe + Send + 'static) -> ThreadPoolTaskHandle<ThreadResult<T>> {
+    pub fn enqueue_task<T: Send+'static>(&self, func: impl FnOnce() -> T + UnwindSafe + Send + 'static) -> ThreadPoolTaskHandle<ThreadResult<T>> {
         let tx_handle = self.task_tx.as_ref().unwrap();
-        let state_handle = Arc::new(Mutex::new(ThreadPoolTaskState::Unpolled));
+        let state_handle = Arc::new(Mutex::new(None));
+        let state_waiter = Arc::new(Condvar::new());
         let state_handle_thread = state_handle.clone();
+        let state_waiter_thread = state_waiter.clone();
+
         tx_handle.send(Box::new(move || {
             let return_value = catch_unwind(func);
 
             // After calling user code, update the state accordingly
             let mut state_guard = state_handle_thread.lock().unwrap();
-            let mut waker_to_poll = None;
-            match state_guard.deref() {
-                ThreadPoolTaskState::Unpolled => {
-                    // If we weren't polled before then just update the state
-                    *state_guard.deref_mut() = ThreadPoolTaskState::Complete(return_value);
-                },
-                ThreadPoolTaskState::Polled(_) => {
-                    // If we were polled before then we need to wake the waker
-                    // Replace state and extract the waker to be signalled later
-                    let state_polled = std::mem::replace(state_guard.deref_mut(), ThreadPoolTaskState::Complete(return_value));
-                    match state_polled {
-                        ThreadPoolTaskState::Polled(waker) => {
-                            waker_to_poll = Some(waker);
-                        },
-                        _ => unreachable!()
-                    }
-                },
-                // Neither of these states are reachable if we just finished
-                ThreadPoolTaskState::Complete(_) => unreachable!(),
-                ThreadPoolTaskState::ValueExtracted => unreachable!(),
-            };
+            *state_guard = Some(return_value);
             // Send wake signal now, after the result is stored in the state
-            if let Some(waker) = waker_to_poll {
-                waker.wake();
-            }
+            // Either notify_one or notify_all work because there should only be
+            // one other handle
+            state_waiter_thread.notify_all();
         })).unwrap();
-        ThreadPoolTaskHandle::new(state_handle)
+        ThreadPoolTaskHandle::new(state_handle, state_waiter)
     }
 }
 
@@ -142,7 +115,6 @@ impl Drop for EagerAsyncThreadPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use pollster::block_on;
 
     use std::time::{Duration, Instant};
     use std::thread::sleep;
@@ -161,7 +133,7 @@ mod test {
             }));
         }
 
-        let mut result_data: Vec<_> = result_handles.into_iter().map(|future| block_on(future)).collect::<Result<Vec<_>, _>>().unwrap();
+        let mut result_data: Vec<_> = result_handles.into_iter().map(|future| future.join()).collect::<Result<Vec<_>, _>>().unwrap();
 
         let end_instant = Instant::now();
         let time_duration = end_instant - start_instant;

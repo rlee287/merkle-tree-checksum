@@ -4,14 +4,10 @@ mod merkle_utils;
 mod iter_utils;
 mod thread_pool;
 
-use std::future::Future;
-use std::future::ready as instant_future;
-use std::pin::Pin;
 use std::thread::Result as ThreadResult;
 use std::panic::UnwindSafe;
-use pollster::block_on;
 
-use thread_pool::EagerAsyncThreadPool;
+use thread_pool::{EagerAsyncThreadPool, Joinable};
 
 use std::io::prelude::*;
 use std::io::SeekFrom;
@@ -26,6 +22,9 @@ pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
 pub use merkle_utils::{branch_t, block_t};
 
 pub use iter_utils::*;
+use thread_pool::{DummyHandle, ThreadPoolTaskHandle};
+
+use ambassador::Delegate;
 
 //use thread_pool::{FnEvaluator, DummyEvaluator, ThreadPoolEvaluator};
 
@@ -62,13 +61,31 @@ impl FnEvaluator for EvaluatorUnion {
     }
 }*/
 
+#[derive(Debug)]
+#[derive(Delegate)]
+#[delegate(Joinable<T>)]
+enum EitherJoinable<T> {
+    Dummy(DummyHandle<T>),
+    Thread(ThreadPoolTaskHandle<T>)
+}
+impl<T> From<DummyHandle<T>> for EitherJoinable<T> {
+    fn from(value: DummyHandle<T>) -> Self {
+        Self::Dummy(value)
+    }
+}
+impl<T> From<ThreadPoolTaskHandle<T>> for EitherJoinable<T> {
+    fn from(value: ThreadPoolTaskHandle<T>) -> Self {
+        Self::Thread(value)
+    }
+}
+
 pub fn merkle_hash_file<F, D, C>(mut file: F,
         block_size: block_t, branch: branch_t,
         hash_queue: C, thread_count: usize) -> Option<Box<[u8]>>
 where
     F: Read + Seek,
     D: Digest + 'static,
-    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: Unpin + UnwindSafe,
+    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: UnwindSafe,
     C: Consumer<HashRange> + Clone + Send + UnwindSafe + 'static
 {
     assert!(block_size != 0);
@@ -86,9 +103,9 @@ where
         0 => None,
         n => Some(EagerAsyncThreadPool::new(n))
     };
-    let hash_out_result = pollster::block_on(merkle_tree_file_helper::<_, D, _>(&mut file,
+    let hash_out_result = merkle_tree_file_helper::<_, D, _>(&mut file,
         block_size, block_count, block_range, branch,
-        hash_queue, threadpool_obj.as_ref())).unwrap();
+        hash_queue, threadpool_obj.as_ref()).join().unwrap();
     let hash_out = hash_out_result.ok()?;
     debug_assert_eq!(file_len, hash_out.1);
     return Some(hash_out.0.to_vec().into_boxed_slice());
@@ -104,11 +121,11 @@ fn merkle_tree_file_helper<F, D, C>(file: &mut F,
         branch: branch_t,
         hash_queue: C,
         threadpool: Option<&EagerAsyncThreadPool>)
-        -> Pin<Box<dyn Future<Output = ThreadResult<HashResult<D>>>>>
+        -> EitherJoinable<ThreadResult<HashResult<D>>>
 where
     F: Read + Seek,
     D: Digest + 'static,
-    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: Unpin + UnwindSafe,
+    <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: UnwindSafe,
     C: Consumer<HashRange> + Clone + Send + UnwindSafe + 'static,
 {
     if block_range.include_end() {
@@ -148,8 +165,9 @@ where
             if let Ok(vec) = file_read_result {
                 file_vec = vec;
             } else {
-                let read_err = instant_future(Ok(Err(HelperErrSignal::FileReadErr)));
-                return Box::pin(read_err)
+                // Err() for returned error, Ok() for no panic
+                let read_err = DummyHandle::new(Ok(Err(HelperErrSignal::FileReadErr)));
+                return read_err.into()
             }
 
             current_pos += file_vec.len() as u64;
@@ -176,9 +194,9 @@ where
                     return Err(HelperErrSignal::ConsumerErr);
                 }
             };
-            let hash_future: Pin<Box<dyn Future<Output = _>>> = match threadpool {
-                Some(ref threadpool) => Box::pin(threadpool.enqueue_task(hash_closure)),
-                None => Box::pin(instant_future(Ok(hash_closure())))
+            let hash_future = match threadpool {
+                Some(ref threadpool) => threadpool.enqueue_task(hash_closure).into(),
+                None => DummyHandle::new(Ok(hash_closure())).into()
             };
             return hash_future;
         } else {
@@ -199,7 +217,7 @@ where
             let mut hash_input: Vec<digest::Output<D>> = Vec::with_capacity(
                 subhash_awaitables.len());
             for awaitable in subhash_awaitables {
-                match block_on(awaitable).unwrap() {
+                match awaitable.join().unwrap() {
                     Ok(subhash) => {
                         hash_input.push(subhash.0);
                         current_pos = subhash.1;
@@ -212,12 +230,14 @@ where
                         break;
                     },
                     Err(HelperErrSignal::FileReadErr) => {
-                        let dummy_err = instant_future(Ok(Err(HelperErrSignal::FileReadErr)));
-                        return Box::pin(dummy_err);
+                        // Err() for returned error, Ok() for no panic
+                        let dummy_err = DummyHandle::new(Ok(Err(HelperErrSignal::FileReadErr)));
+                        return dummy_err.into();
                     },
                     Err(HelperErrSignal::ConsumerErr) => {
-                        let dummy_err = instant_future(Ok(Err(HelperErrSignal::ConsumerErr)));
-                        return Box::pin(dummy_err);
+                        // Err() for returned error, Ok() for no panic
+                        let dummy_err = DummyHandle::new(Ok(Err(HelperErrSignal::ConsumerErr)));
+                        return dummy_err.into();
                     }
                 }
             }
@@ -245,14 +265,15 @@ where
                     return Err(HelperErrSignal::ConsumerErr);
                 }
             };
-            let hash_future: Pin<Box<dyn Future<Output = _>>> = match threadpool {
-                Some(ref threadpool) => Box::pin(threadpool.enqueue_task(hash_closure)),
-                None => Box::pin(instant_future(Ok(hash_closure())))
+            let hash_future = match threadpool {
+                Some(ref threadpool) => threadpool.enqueue_task(hash_closure).into(),
+                None => DummyHandle::new(Ok(hash_closure())).into()
             };
             return hash_future;
         }
     } else {
-        let dummy_err = instant_future(Ok(Err(HelperErrSignal::FileEOF)));
-        return Box::pin(dummy_err);
+        // Err() for returned error, Ok() for no panic
+        let dummy_err = DummyHandle::new(Ok(Err(HelperErrSignal::FileEOF)));
+        return dummy_err.into();
     }
 }
