@@ -88,13 +88,13 @@ fn get_cpu_affinities(topology: &Topology, thread_count: usize) -> Option<Vec<Cp
 }
 
 #[derive(Debug)]
-pub(crate) struct EagerAsyncThreadPool {
+pub(crate) struct EagerThreadPool {
     thread_handles: Vec<JoinHandle<()>>,
     task_tx: Option<Sender<Box<dyn FnOnce()+Send>>>
 }
-impl EagerAsyncThreadPool {
+impl EagerThreadPool {
     pub fn new(thread_count: usize) -> Self {
-        let (tx, rx) = bounded(16);
+        let (tx, rx) = bounded(2*thread_count);
 
         // Fail gracefully if we can't get CPU binding info for whatever reason
         let mut handle_vec = Vec::with_capacity(thread_count);
@@ -163,7 +163,7 @@ impl EagerAsyncThreadPool {
     }
 }
 
-impl Drop for EagerAsyncThreadPool {
+impl Drop for EagerThreadPool {
     fn drop(&mut self) {
         // Drop the send handle, which should hang up the recv channels in the threads
         self.task_tx = None;
@@ -184,7 +184,7 @@ mod test {
 
     #[test]
     fn test_threadpool_basic() {
-        let threadpool = EagerAsyncThreadPool::new(3);
+        let threadpool = EagerThreadPool::new(3);
         let mut result_handles: Vec<_> = Vec::new();
 
         let start_instant = Instant::now();

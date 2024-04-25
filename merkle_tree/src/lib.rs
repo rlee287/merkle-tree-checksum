@@ -7,7 +7,7 @@ mod thread_pool;
 use std::thread::Result as ThreadResult;
 use std::panic::UnwindSafe;
 
-use thread_pool::{EagerAsyncThreadPool, Joinable};
+use thread_pool::{EagerThreadPool, Joinable};
 
 use std::io::prelude::*;
 use std::io::SeekFrom;
@@ -73,7 +73,7 @@ where
 
     let threadpool_obj = match thread_count {
         0 => None,
-        n => Some(EagerAsyncThreadPool::new(n))
+        n => Some(EagerThreadPool::new(n))
     };
     let hash_out_result = merkle_tree_file_helper::<_, D, _>(&mut file,
         block_size, block_count, block_range, branch,
@@ -91,7 +91,7 @@ fn merkle_tree_file_helper<F, D, C>(file: &mut F,
         block_size: block_t, block_count: u64, block_range: BlockRange,
         branch: branch_t,
         hash_queue: C,
-        threadpool: Option<&EagerAsyncThreadPool>)
+        threadpool: Option<&EagerThreadPool>)
         -> EitherJoinable<ThreadResult<HashResult<D>>>
 where
     F: Read + Seek,
@@ -186,12 +186,12 @@ where
                     block_size, block_count, slice_range, branch, 
                     hash_queue.clone(), threadpool));
             }
-            let mut hash_input: Vec<digest::Output<D>> = Vec::with_capacity(
-                subhash_awaitables.len());
+            let mut hash_input: Vec<u8> = Vec::with_capacity(
+                subhash_awaitables.len()*<D as Digest>::output_size());
             for awaitable in subhash_awaitables {
                 match awaitable.join().unwrap() {
                     Ok(subhash) => {
-                        hash_input.push(subhash.0);
+                        hash_input.extend(subhash.0);
                         current_pos = subhash.1;
                     },
                     Err(HelperErrSignal::FileEOF) => {
@@ -223,11 +223,8 @@ where
                 let block_range = BlockRange::new(start_block, end_block, true);
                 let byte_range = BlockRange::new(start_byte, end_byte_file, true);
 
-                //let hash_result = D::digest(hash_input.as_slice());
                 let mut digest_obj = D::new_with_prefix([0x01]);
-                for hash in hash_input.iter() {
-                    digest_obj.update(hash);
-                }
+                digest_obj.update(hash_input.as_slice());
                 let hash_result = digest_obj.finalize();
                 let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
 
