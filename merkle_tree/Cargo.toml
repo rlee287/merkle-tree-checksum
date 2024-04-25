@@ -17,7 +17,7 @@ ambassador = {version = "0.3", default-features = false}
 genawaiter = {version = "0.99", default-features = false}
 
 crossbeam-channel = "0.5"
-hwlocality = { version = "1.0.0-alpha.3", default-features = false, features = ["vendored"], optional = true }
+hwlocality = { version = "1.0.0-alpha.3", default-features = false, optional = true }
 
 [dev-dependencies]
 sha2 = "0.10"
@@ -26,3 +26,4 @@ permutohedron = "0.2"
 [features]
 default = ["hwlocality"]
 hwlocality = ["dep:hwlocality"]
+hwlocality_vendored = ["hwlocality", "hwlocality/vendored"]
