@@ -8,6 +8,9 @@ use std::fmt;
 use crate::error_types::HeaderParsingErr;
 use crate::parse_functions::size_str_to_num;
 
+use crossbeam_channel::Sender as CrossbeamSender;
+use indicatif::ProgressBar;
+
 use strum::VariantArray;
 use strum_macros::{IntoStaticStr, EnumString, VariantArray, FromRepr};
 
@@ -17,10 +20,48 @@ use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
 use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3;
-use merkle_tree::{block_t, branch_t};
+use merkle_tree::{block_t, branch_t, Consumer};
 
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
+
+#[derive(Debug, Clone)]
+pub(crate) enum ChannelOrPb<T> {
+    Channel(CrossbeamSender<T>),
+    ProgressBar(ProgressBar)
+}
+impl<T> From<CrossbeamSender<T>> for ChannelOrPb<T> {
+    fn from(value: CrossbeamSender<T>) -> Self {
+        Self::Channel(value)
+    }
+}
+impl<T> From<ProgressBar> for ChannelOrPb<T> {
+    fn from(value: ProgressBar) -> Self {
+        Self::ProgressBar(value)
+    }
+}
+// Have to impl by hand because both Consumer trait and ProgressBar struct are foreign
+impl<T> Consumer<T> for ChannelOrPb<T> {
+    fn accept(&self, var: T) -> Result<(), T> {
+        match self {
+            ChannelOrPb::Channel(sender) => sender.accept(var),
+            ChannelOrPb::ProgressBar(pb) => {
+                pb.inc(1);
+                Ok(())
+            },
+        }
+    }
+}
+// Uses drop impl to finish the pb
+impl<T> Drop for ChannelOrPb<T> {
+    fn drop(&mut self) {
+        match self {
+            ChannelOrPb::Channel(_) => {/* do nothing */},
+            // Unfortunately can't check if pb finished here
+            ChannelOrPb::ProgressBar(pb) => {pb.finish()},
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StoredAndComputed<T> {

@@ -36,6 +36,7 @@ use merkle_tree::reorder_hashrange_iter;
 use utils::HashFunctions;
 use utils::StoredAndComputed;
 use utils::TreeParams;
+use utils::ChannelOrPb;
 use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 
 use std::convert::TryFrom;
@@ -648,7 +649,13 @@ fn run() -> i32 {
             pb_hash.set_message("Hash");
         }
 
-        let (tx, rx) = bounded_channel::<HashRange>(16);
+        let (tx, rx, pb_hash): (ChannelOrPb<_>, _, _) = match short_output {
+            true => (pb_hash.into(), None, None),
+            false => {
+                let (tx, rx) = bounded_channel::<HashRange>(16);
+                (tx.into(), Some(rx), Some(pb_hash))
+            }
+        };
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
@@ -671,16 +678,13 @@ fn run() -> i32 {
 
         let mut hash_loop_status: Result<(), VerificationError> = Ok(());
 
-        if short_output {
-            // Consume sent messages without doing anything with them
-            for _ in rx {
-                pb_hash.inc(1);
-            }
-        } else {
+        if let Some(rx) = rx {
             let block_iter = merkle_block_generator(
                 file_size, block_size, branch_factor).into_iter();
             for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
-                pb_hash.inc(1);
+                if let Some(ref pb_hash) = pb_hash {
+                    pb_hash.inc(1);
+                }
                 match &mut cmd_chosen {
                     HashCommand::GenerateHash(Some(w)) => {
                         writeln!(w, "{:3} {} {} {}",
@@ -729,13 +733,14 @@ fn run() -> i32 {
             }
         }
 
-        pb_hash.finish();
+        if let Some(ref pb_hash) = pb_hash {
+            pb_hash.finish();
 
-        let final_hash_option = thread_handle.join().unwrap();
-
-        if quiet_count == 0 && hash_loop_status.is_ok() {
-            assert_eq!(pb_hash.position(), pb_hash.length().unwrap());
+            if quiet_count == 0 && hash_loop_status.is_ok() {
+                assert_eq!(pb_hash.position(), pb_hash.length().unwrap());
+            }
         }
+        let final_hash_option = thread_handle.join().unwrap();
 
         if short_output {
             /*
