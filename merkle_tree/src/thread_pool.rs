@@ -95,6 +95,8 @@ pub(crate) struct EagerAsyncThreadPool {
 impl EagerAsyncThreadPool {
     pub fn new(thread_count: usize) -> Self {
         let (tx, rx) = bounded(16);
+
+        // Fail gracefully if we can't get CPU binding info for whatever reason
         let mut handle_vec = Vec::with_capacity(thread_count);
         #[cfg(feature = "hwlocality")]
         let thread_binding_infos = {

@@ -26,8 +26,6 @@ use thread_pool::{DummyHandle, ThreadPoolTaskHandle};
 
 use ambassador::Delegate;
 
-//use thread_pool::{FnEvaluator, DummyEvaluator, ThreadPoolEvaluator};
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum HelperErrSignal {
     FileEOF,
@@ -169,7 +167,7 @@ where
             };
             let hash_future = match threadpool {
                 Some(threadpool) => threadpool.enqueue_task(hash_closure).into(),
-                // Err() for returned error, Ok() for no panic
+                // Ok() for no panic
                 None => DummyHandle::new(Ok(hash_closure())).into()
             };
             return hash_future;
