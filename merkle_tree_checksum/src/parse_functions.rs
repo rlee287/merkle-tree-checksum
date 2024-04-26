@@ -9,7 +9,7 @@ use std::str::FromStr;
 use regex::Regex;
 use hex::FromHex;
 
-use merkle_tree::{BlockRange, HashRange, block_t};
+use merkle_tree::{BlockRange, HashData, HashRange, block_t};
 use crate::error_types::{FilenameExtractionError, HashExtractionError, HeaderParsingErr, SizeStrToNumErr};
 
 const QUOTED_STR_REGEX: &str = "(\"(?:[^\"]|\\\\\")*\")";
@@ -165,15 +165,15 @@ cached!{
         Arc::new(Regex::new(&regex_str).unwrap())
     }
 }
-pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Result<(Box<[u8]>, &str), HashExtractionError> {
+pub(crate) fn extract_short_hash_parts(line: &str, hex_digit_count: usize) -> Result<(HashData<64>, &str), HashExtractionError> {
     let parsing_regex = short_hash_regex(hex_digit_count);
     let portions = parsing_regex.captures(line)
         .ok_or(HashExtractionError::default())?;
     debug_assert!(portions.len() == 3);
-    let hash_hex_vec = Vec::<u8>::from_hex(&portions[1])
+    let hash_hex = HashData::from_hex(&portions[1])
         .map_err(|_| HashExtractionError::default())?;
     let quoted_name = portions.get(2).unwrap();
-    Ok((hash_hex_vec.into_boxed_slice(), &line[quoted_name.range()]))
+    Ok((hash_hex, &line[quoted_name.range()]))
 }
 
 cached!{
@@ -225,9 +225,9 @@ pub(crate) fn extract_long_hash_parts(line: &str, hex_digit_count: usize) -> Res
     };
     let byte_range = BlockRange::new(byte_start, byte_end, byte_end_incl);
 
-    let hash_hex_vec = Vec::<u8>::from_hex(&portions[8]).map_err(|_| HashExtractionError::default())?;
+    let hash_hex = HashData::from_hex(&portions[8]).map_err(|_| HashExtractionError::default())?;
 
-    let hash_range = HashRange::new(block_range, byte_range, hash_hex_vec.into_boxed_slice());
+    let hash_range = HashRange::new(block_range, byte_range, hash_hex);
     Ok((file_id, hash_range))
 }
 

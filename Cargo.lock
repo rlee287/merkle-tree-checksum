@@ -742,10 +742,12 @@ name = "merkle_tree"
 version = "0.4.1"
 dependencies = [
  "ambassador",
+ "arrayvec",
  "crossbeam-channel",
  "digest",
  "genawaiter",
  "generic-array",
+ "hex",
  "hwlocality",
  "num-iter",
  "permutohedron",

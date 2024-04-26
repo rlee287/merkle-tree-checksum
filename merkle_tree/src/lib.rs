@@ -18,7 +18,7 @@ use digest::{Digest, OutputSizeUser};
 use generic_array::GenericArray;
 
 use merkle_utils::*;
-pub use merkle_utils::{node_count, seek_len, BlockRange, HashRange, Consumer};
+pub use merkle_utils::{node_count, seek_len, BlockRange, HashData, HashRange, Consumer};
 pub use merkle_utils::{branch_t, block_t};
 
 pub use iter_utils::*;
@@ -53,7 +53,7 @@ impl<T> From<ThreadPoolTaskHandle<T>> for EitherJoinable<T> {
 
 pub fn merkle_hash_file<F, D, C>(mut file: F,
         block_size: block_t, branch: branch_t,
-        hash_queue: C, thread_count: usize) -> Option<Box<[u8]>>
+        hash_queue: C, thread_count: usize) -> Option<HashData<64>>
 where
     F: Read + Seek,
     D: Digest + 'static,
@@ -62,6 +62,7 @@ where
 {
     assert!(block_size != 0);
     assert!(branch >= 2);
+    assert!(<D as Digest>::output_size() <= merkle_utils::MAX_HASH_LEN);
     file.seek(SeekFrom::Start(0)).unwrap();
     let file_len = seek_len(&mut file);
     let block_count = match file_len.div_ceil(block_size.into()) {
@@ -80,7 +81,7 @@ where
         hash_queue, threadpool_obj.as_ref()).join().unwrap();
     let hash_out = hash_out_result.ok()?;
     debug_assert_eq!(file_len, hash_out.1);
-    return Some(hash_out.0.to_vec().into_boxed_slice());
+    return Some(HashData::try_new(&hash_out.0).unwrap());
 }
 
 type HashArray<T> = GenericArray<u8, <T as OutputSizeUser>::OutputSize>;
@@ -99,6 +100,7 @@ where
     <D::OutputSize as generic_array::ArrayLength<u8>>::ArrayType: UnwindSafe,
     C: Consumer<HashRange> + Clone + Send + UnwindSafe + 'static,
 {
+    assert!(<D as Digest>::output_size() <= merkle_utils::MAX_HASH_LEN);
     if block_range.include_end() {
         assert!(block_range.start() <= block_range.end());
     } else {
@@ -157,7 +159,7 @@ where
                 let mut digest_obj = D::new_with_prefix([0x00]);
                 digest_obj.update(file_vec.as_slice());
                 let hash_result = digest_obj.finalize();
-                let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
+                let block_hash_result = HashRange::new(block_range, byte_range,HashData::try_new(&hash_result).unwrap());
 
                 if hash_queue.accept(block_hash_result).is_ok() {
                     return Ok((hash_result, current_pos));
@@ -226,7 +228,7 @@ where
                 let mut digest_obj = D::new_with_prefix([0x01]);
                 digest_obj.update(hash_input.as_slice());
                 let hash_result = digest_obj.finalize();
-                let block_hash_result = HashRange::new(block_range, byte_range,hash_result.to_vec().into_boxed_slice());
+                let block_hash_result = HashRange::new(block_range, byte_range, HashData::try_new(&hash_result).unwrap());
 
                 if hash_queue.accept(block_hash_result).is_ok() {
                     return Ok((hash_result, current_pos));

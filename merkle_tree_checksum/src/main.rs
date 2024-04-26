@@ -29,7 +29,7 @@ use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3;
 
 use merkle_tree::{merkle_hash_file, merkle_block_generator};
-use merkle_tree::HashRange;
+use merkle_tree::{HashData, HashRange};
 use merkle_tree::{branch_t, block_t};
 use merkle_tree::reorder_hashrange_iter;
 
@@ -717,9 +717,9 @@ fn run() -> i32 {
                                 hash_loop_status = Err(VerificationError::MismatchedByteRange(StoredAndComputed::new(file_hash_range.byte_range(), block_hash.byte_range())))
                             }
                             if block_hash.hash_result() != file_hash_range.hash_result() {
-                                let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
-                                let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
-                                hash_loop_status = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), StoredAndComputed::new(file_hash_box,block_hash_box)));
+                                let file_hash_data = HashData::try_new(file_hash_range.hash_result()).unwrap();
+                                let block_hash_data = HashData::try_new(block_hash.hash_result()).unwrap();
+                                hash_loop_status = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), StoredAndComputed::new(file_hash_data,block_hash_data)));
                                 break;
                             }
                         } else {
@@ -762,13 +762,13 @@ fn run() -> i32 {
                     r.read_line(&mut line).unwrap();
 
                     let hash_parts = extract_short_hash_parts(&line, 2*expected_hash_len);
-                    if let Ok((file_hash_box, quoted_name)) = hash_parts {
+                    if let Ok((file_hash_read, quoted_name)) = hash_parts {
                         assert_eq!(filename_str,
                             enquote::unquote(quoted_name).unwrap());
-                        if final_hash == file_hash_box {
+                        if final_hash == file_hash_read {
                             hash_loop_status = Ok(());
                         } else {
-                            hash_loop_status = Err(VerificationError::MismatchedHash(None, StoredAndComputed::new(file_hash_box, final_hash)));
+                            hash_loop_status = Err(VerificationError::MismatchedHash(None, StoredAndComputed::new(file_hash_read, final_hash)));
                         }
                     } else {
                         hash_loop_status = Err(VerificationError::MalformedEntry(line));

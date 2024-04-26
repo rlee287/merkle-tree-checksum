@@ -5,7 +5,11 @@ use std::io::{Read, Seek, SeekFrom};
 use std::io::Result as IOResult;
 use std::io::ErrorKind;
 
-use std::ops::{RangeBounds, Bound, RangeInclusive, Range};
+use std::convert::TryFrom;
+use hex::{FromHex, FromHexError};
+use arrayvec::{ArrayVec, CapacityError};
+
+use std::ops::{Bound, Deref, Range, RangeBounds, RangeInclusive};
 
 use crossbeam_channel::Sender as CrossbeamSender;
 
@@ -212,16 +216,61 @@ impl fmt::Display for BlockRange {
     }
 }
 
+// Wrapper struct to create immutable container of bytes on the stack
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+pub struct HashData<const CAP: usize> {
+    arr: ArrayVec<u8, CAP>
+}
+impl<const CAP: usize> HashData<CAP> {
+    pub fn try_new(data: &[u8]) -> Result<Self, CapacityError> {
+        let arr = ArrayVec::try_from(data)?;
+        Ok(Self{arr})
+    }
+}
+impl<const CAP: usize> Deref for HashData<CAP> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.arr
+    }
+}
+impl<const CAP: usize> AsRef<[u8]> for HashData<CAP> {
+    fn as_ref(&self) -> &[u8] {
+        &self.arr
+    }
+}
+impl<const CAP: usize> FromHex for HashData<CAP> {
+    type Error = FromHexError;
+
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        let hex_ref = hex.as_ref();
+        if hex_ref.len() > 2*CAP {
+            return Err(FromHexError::InvalidStringLength);
+        }
+        let mut backing_array = [0x00; CAP];
+        let final_len = hex_ref.len()/2;
+
+        hex::decode_to_slice(hex_ref, &mut backing_array[..final_len])?;
+
+        let mut arr = ArrayVec::new();
+        arr.try_extend_from_slice(&backing_array[..final_len]).unwrap();
+
+        Ok(HashData{arr})
+    }
+}
+
+pub(crate) const MAX_HASH_LEN: usize = 512/8;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HashRange {
     block_range: BlockRange,
     byte_range: BlockRange,
-    hash_result: Box<[u8]>
+    hash_result: HashData<MAX_HASH_LEN>
 }
 impl HashRange {
     pub fn new(block_range: BlockRange,
             byte_range: BlockRange,
-            hash_result: Box<[u8]>) -> HashRange {
+            hash_result: HashData<MAX_HASH_LEN>) -> Self {
         HashRange {block_range,
                 byte_range,
                 hash_result}

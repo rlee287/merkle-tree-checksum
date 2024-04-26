@@ -1,4 +1,4 @@
-use merkle_tree::{BlockRange, HashRange, merkle_hash_file};
+use merkle_tree::{BlockRange, HashData, HashRange, merkle_hash_file};
 use merkle_tree::{merkle_block_generator, reorder_hashrange_iter};
 use merkle_tree::Consumer;
 
@@ -28,9 +28,8 @@ fn test_empty_string() {
     let empty_cursor = Cursor::new(b"");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (empty_cursor, 4, 2, throwaway_consumer, 0);
-    let tree_hash_box = tree_hash.unwrap();
-    assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
+        (empty_cursor, 4, 2, throwaway_consumer, 0).unwrap();
+    assert_eq!(ref_hash_ref, tree_hash.as_ref());
 }
 
 fn test_partial_block_helper(thread_count: usize) {
@@ -41,9 +40,8 @@ fn test_partial_block_helper(thread_count: usize) {
     let data_cursor = Cursor::new(b"yz");
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, throwaway_consumer, thread_count);
-    let tree_hash_box = tree_hash.unwrap();
-    assert_eq!(ref_hash_ref, tree_hash_box.as_ref());
+        (data_cursor, 4, 2, throwaway_consumer, thread_count).unwrap();
+    assert_eq!(ref_hash_ref, tree_hash.as_ref());
 }
 #[test]
 fn test_partial_block() {
@@ -68,8 +66,7 @@ fn test_tree_helper(thread_count: usize) {
     let data_cursor = Cursor::new(data);
 
     let tree_hash = merkle_hash_file::<_, Sha256, _>
-        (data_cursor, 4, 2, tx, thread_count);
-    let tree_hash_box = tree_hash.unwrap();
+        (data_cursor, 4, 2, tx, thread_count).unwrap();
 
     let rx_iter = rx.into_iter();
     // If not multithread, then should be in order
@@ -85,23 +82,23 @@ fn test_tree_helper(thread_count: usize) {
     let ref_leaf0_hashrange = HashRange::new(
         BlockRange::new(0, 0, true),
         BlockRange::new(0, 3, true),
-        ref_leaf0_hash.to_vec().into_boxed_slice()
+        HashData::try_new(&ref_leaf0_hash).unwrap()
     );
     let ref_leaf1_hashrange = HashRange::new(
         BlockRange::new(1, 1, true),
         BlockRange::new(4, 7, true),
-        ref_leaf1_hash.to_vec().into_boxed_slice()
+        HashData::try_new(&ref_leaf1_hash).unwrap()
     );
     let ref_tree_hashrange = HashRange::new(
         BlockRange::new(0, 1, true),
         BlockRange::new(0, 7, true),
-        ref_tree_hash.to_vec().into_boxed_slice()
+        HashData::try_new(&ref_tree_hash).unwrap()
     );
     assert_eq!(ref_leaf0_hashrange, rx_vec[0]);
     assert_eq!(ref_leaf1_hashrange, rx_vec[1]);
     assert_eq!(ref_tree_hashrange, rx_vec[2]);
 
-    assert_eq!(ref_tree_hash.as_slice(), tree_hash_box.as_ref());
+    assert_eq!(ref_tree_hash.as_slice(), tree_hash.as_ref());
 }
 #[test]
 fn test_tree() {

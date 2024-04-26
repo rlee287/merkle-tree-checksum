@@ -10,6 +10,8 @@ publish = false
 [dependencies]
 digest = "0.10"
 generic-array = "0.14"
+arrayvec = "0.7"
+hex = "0.4"
 num-iter = "0.1"
 ambassador = {version = "0.3", default-features = false}
 # The more popular "generator" library has potential unsoundness issues
