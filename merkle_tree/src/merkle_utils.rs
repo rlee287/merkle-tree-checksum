@@ -218,10 +218,12 @@ impl fmt::Display for BlockRange {
 
 // Wrapper struct to create immutable container of bytes on the stack
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct HashData<const CAP: usize> {
     arr: ArrayVec<u8, CAP>
 }
 impl<const CAP: usize> HashData<CAP> {
+    #[inline]
     pub fn try_new(data: &[u8]) -> Result<Self, CapacityError> {
         let arr = ArrayVec::try_from(data)?;
         Ok(Self{arr})
@@ -230,11 +232,13 @@ impl<const CAP: usize> HashData<CAP> {
 impl<const CAP: usize> Deref for HashData<CAP> {
     type Target = [u8];
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.arr
     }
 }
 impl<const CAP: usize> AsRef<[u8]> for HashData<CAP> {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         &self.arr
     }
