@@ -1,5 +1,5 @@
 use merkle_tree::{BlockRange, merkle_block_generator, reorder_hashrange_iter};
-use merkle_tree::{HashRange, merkle_hash_file};
+use merkle_tree::{HashData, HashRange, merkle_hash_file};
 
 use sha2::Sha256;
 use permutohedron::Heap;
@@ -43,7 +43,7 @@ fn reorder_already_ordered() {
     let hashrange_vec: Vec<_> = blockrange_vec.iter()
         .map(|blockrange| {
             let dummy_byterange = BlockRange::new(16, 16, true);
-            let dummy_hash = vec![0x00, 0xff].into_boxed_slice();
+            let dummy_hash = HashData::try_new(&[0x00, 0xff]).unwrap();
             HashRange::new(*blockrange, dummy_byterange, dummy_hash)
         }).collect();
     let hashrange_vec_ref = hashrange_vec.clone();
@@ -62,7 +62,7 @@ fn reorder_scrambled() {
     let mut hashrange_vec: Vec<_> = blockrange_vec.iter()
         .map(|blockrange| {
             let dummy_byterange = BlockRange::new(16, 16, true);
-            let dummy_hash = vec![0x00, 0xff].into_boxed_slice();
+            let dummy_hash = HashData::try_new(&[0x00, 0xff]).unwrap();
             HashRange::new(*blockrange, dummy_byterange, dummy_hash)
         }).collect();
     let hashrange_vec_ref = hashrange_vec.clone();

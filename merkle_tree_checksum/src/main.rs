@@ -29,13 +29,14 @@ use blake2::{Blake2b512, Blake2s256};
 use blake3::Hasher as Blake3;
 
 use merkle_tree::{merkle_hash_file, merkle_block_generator};
-use merkle_tree::HashRange;
+use merkle_tree::{HashData, HashRange};
 use merkle_tree::{branch_t, block_t};
 use merkle_tree::reorder_hashrange_iter;
 
 use utils::HashFunctions;
 use utils::StoredAndComputed;
 use utils::TreeParams;
+use utils::ChannelOrPb;
 use error_types::{PreHashError, HeaderParsingErr, VerificationError};
 
 use std::convert::TryFrom;
@@ -648,7 +649,13 @@ fn run() -> i32 {
             pb_hash.set_message("Hash");
         }
 
-        let (tx, rx) = bounded_channel::<HashRange>(16);
+        let (tx, rx, pb_hash): (ChannelOrPb<_>, _, _) = match short_output {
+            true => (pb_hash.into(), None, None),
+            false => {
+                let (tx, rx) = bounded_channel::<HashRange>(16);
+                (tx.into(), Some(rx), Some(pb_hash))
+            }
+        };
         let thread_handle = thread::Builder::new()
             .name(String::from(filename_str))
             .spawn(move || {
@@ -671,16 +678,13 @@ fn run() -> i32 {
 
         let mut hash_loop_status: Result<(), VerificationError> = Ok(());
 
-        if short_output {
-            // Consume sent messages without doing anything with them
-            for _ in rx {
-                pb_hash.inc(1);
-            }
-        } else {
+        if let Some(rx) = rx {
             let block_iter = merkle_block_generator(
                 file_size, block_size, branch_factor).into_iter();
             for block_hash in reorder_hashrange_iter(block_iter, rx.into_iter()) {
-                pb_hash.inc(1);
+                if let Some(ref pb_hash) = pb_hash {
+                    pb_hash.inc(1);
+                }
                 match &mut cmd_chosen {
                     HashCommand::GenerateHash(Some(w)) => {
                         writeln!(w, "{:3} {} {} {}",
@@ -713,9 +717,9 @@ fn run() -> i32 {
                                 hash_loop_status = Err(VerificationError::MismatchedByteRange(StoredAndComputed::new(file_hash_range.byte_range(), block_hash.byte_range())))
                             }
                             if block_hash.hash_result() != file_hash_range.hash_result() {
-                                let file_hash_box = file_hash_range.hash_result().to_vec().into_boxed_slice();
-                                let block_hash_box = block_hash.hash_result().to_vec().into_boxed_slice();
-                                hash_loop_status = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), StoredAndComputed::new(file_hash_box,block_hash_box)));
+                                let file_hash_data = HashData::try_new(file_hash_range.hash_result()).unwrap();
+                                let block_hash_data = HashData::try_new(block_hash.hash_result()).unwrap();
+                                hash_loop_status = Err(VerificationError::MismatchedHash(Some(block_hash.byte_range()), StoredAndComputed::new(file_hash_data,block_hash_data)));
                                 break;
                             }
                         } else {
@@ -729,13 +733,14 @@ fn run() -> i32 {
             }
         }
 
-        pb_hash.finish();
+        if let Some(ref pb_hash) = pb_hash {
+            pb_hash.finish();
 
-        let final_hash_option = thread_handle.join().unwrap();
-
-        if quiet_count == 0 && hash_loop_status.is_ok() {
-            assert_eq!(pb_hash.position(), pb_hash.length().unwrap());
+            if quiet_count == 0 && hash_loop_status.is_ok() {
+                assert_eq!(pb_hash.position(), pb_hash.length().unwrap());
+            }
         }
+        let final_hash_option = thread_handle.join().unwrap();
 
         if short_output {
             /*
@@ -757,13 +762,13 @@ fn run() -> i32 {
                     r.read_line(&mut line).unwrap();
 
                     let hash_parts = extract_short_hash_parts(&line, 2*expected_hash_len);
-                    if let Ok((file_hash_box, quoted_name)) = hash_parts {
+                    if let Ok((file_hash_read, quoted_name)) = hash_parts {
                         assert_eq!(filename_str,
                             enquote::unquote(quoted_name).unwrap());
-                        if final_hash == file_hash_box {
+                        if final_hash == file_hash_read {
                             hash_loop_status = Ok(());
                         } else {
-                            hash_loop_status = Err(VerificationError::MismatchedHash(None, StoredAndComputed::new(file_hash_box, final_hash)));
+                            hash_loop_status = Err(VerificationError::MismatchedHash(None, StoredAndComputed::new(file_hash_read, final_hash)));
                         }
                     } else {
                         hash_loop_status = Err(VerificationError::MalformedEntry(line));

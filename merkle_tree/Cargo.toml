@@ -10,17 +10,22 @@ publish = false
 [dependencies]
 digest = "0.10"
 generic-array = "0.14"
+arrayvec = "0.7"
+hex = "0.4"
 num-iter = "0.1"
+ambassador = {version = "0.3", default-features = false}
 # The more popular "generator" library has potential unsoundness issues
 # Prefering genawaiter with more documentation and no stack-switch shenanigans
 genawaiter = {version = "0.99", default-features = false}
 
 crossbeam-channel = "0.5"
-[dependencies.oneshot]
-version = "0.1"
-default-features = false
-features = ["std"]
+hwlocality = { version = "1.0.0-alpha.3", default-features = false, optional = true }
 
 [dev-dependencies]
 sha2 = "0.10"
 permutohedron = "0.2"
+
+[features]
+default = ["hwlocality"]
+hwlocality = ["dep:hwlocality"]
+hwlocality_vendored = ["hwlocality", "hwlocality/vendored"]

@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 use crate::utils::{StoredAndComputed, HeaderElement};
-use merkle_tree::BlockRange;
+use merkle_tree::{BlockRange, HashData};
 
 use hex::ToHex;
 use std::fmt;
@@ -87,7 +87,7 @@ pub(crate) enum VerificationError {
     MismatchedBlockRange(StoredAndComputed<BlockRange>),
     MismatchedByteRange(StoredAndComputed<BlockRange>),
     // Range is byte range, which exists when verifying long hashes
-    MismatchedHash(Option<BlockRange>, StoredAndComputed<Box<[u8]>>),
+    MismatchedHash(Option<BlockRange>, StoredAndComputed<HashData<64>>),
     MalformedEntry(String), // String is the malformed line
     UnexpectedEof
 }
