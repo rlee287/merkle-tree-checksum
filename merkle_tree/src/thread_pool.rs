@@ -17,11 +17,12 @@ use hwlocality::object::depth::NormalDepth;
 use hwlocality::topology::DistributeFlags;
 #[cfg(feature = "hwlocality")]
 use hwlocality::cpu::cpuset::CpuSet;
+#[cfg(feature = "hwlocality")]
+use hwlocality::cpu::binding::CpuBindingFlags;
 
 use crossbeam_channel::{Sender, Receiver, bounded};
 
 use std::fmt::Debug;
-use hwlocality::cpu::binding::CpuBindingFlags;
 
 #[delegatable_trait]
 pub(crate) trait Joinable<T> {
