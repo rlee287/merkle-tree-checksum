@@ -1,65 +1,86 @@
 #![forbid(unsafe_code)]
 
-use crate::merkle_utils::{exp_ceil_log, BlockRange, HashRange};
+use crate::merkle_utils::{BlockRange, HashRange};
 use crate::merkle_utils::{branch_t, block_t};
 
-use num_iter::range_step;
-
-use genawaiter::rc::{Co, Gen};
-
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
+
+#[derive(Debug, Clone)]
+struct TreeBlockIter {
+    iter_stash: VecDeque<BlockRange>,
+    branch: branch_t,
+    iter_block_ctr: u64,
+    leaf_block_count: u64
+}
+impl TreeBlockIter {
+    pub fn new(leaf_block_count: u64, branch: branch_t) -> Self {
+        assert!(branch >= 2);
+        Self {
+            iter_stash: VecDeque::new(),
+            branch,
+            iter_block_ctr: 0,
+            leaf_block_count
+        }
+    }
+}
+impl Iterator for TreeBlockIter {
+    type Item = BlockRange;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Check the stash first in order to properly unwind at the end
+        match self.iter_stash.pop_front() {
+            Some(val) => Some(val),
+            None => {
+                // Separately handle the case of leaf_block_count being 0
+                if self.iter_block_ctr >= self.leaf_block_count {
+                    if self.iter_block_ctr > self.leaf_block_count {
+                        return None;
+                    }
+                    if self.leaf_block_count > 0 {
+                        return None;
+                    }
+                }
+                // Construct the next single block
+                let next_single = BlockRange::new(self.iter_block_ctr, self.iter_block_ctr, true);
+
+                let branch_as_u64 = u64::from(self.branch);
+
+                // Construct non-leaf nodes at the end of larger sections
+                let single_end_pt = self.iter_block_ctr + 1;
+                let mut div_tester = branch_as_u64;
+                while div_tester <= self.leaf_block_count {
+                    // Round down to next multiple
+                    let larger_interval_start = (self.iter_block_ctr / (div_tester)) * div_tester;
+                    if single_end_pt % div_tester == 0 {
+                        // Non-leaf node at end of section
+                        self.iter_stash.push_back(BlockRange::new(larger_interval_start, single_end_pt, false));
+                    } else if single_end_pt >= self.leaf_block_count {
+                        // Non-leaf node at end of entire file, possibly truncated tree
+                        let larger_interval_end = larger_interval_start + div_tester;
+                        self.iter_stash.push_back(BlockRange::new(larger_interval_start, larger_interval_end, false));
+                    }
+                    div_tester *= branch_as_u64;
+                }
+                // Add the root if we haven't already walked it back from a non-truncated tree
+                if let Some(last) = self.iter_stash.back() {
+                    if single_end_pt >= self.leaf_block_count && last.start() != 0 {
+                        self.iter_stash.push_back(BlockRange::new(0, div_tester, false));
+                    }
+                }
+                self.iter_block_ctr += 1;
+                return Some(next_single);
+            }
+        }
+    }
+}
 
 pub fn merkle_block_generator(file_len: u64, block_size: block_t, branch: branch_t) -> impl IntoIterator<Item = BlockRange> {
     assert!(block_size != 0);
     assert!(branch >= 2);
-    let block_count = match file_len.div_ceil(block_size.into()) {
-        0 => 1,
-        n => n
-    };
-    let effective_block_count = exp_ceil_log(block_count, branch);
 
-    let block_range = BlockRange::new(0, effective_block_count, false);
-    Gen::new(|state| async move {
-        merkle_block_generator_helper(&state,
-            block_count, block_range, branch).await;
-    })
-}
-
-async fn merkle_block_generator_helper(state: &Co<BlockRange>,
-        block_count: u64, block_range: BlockRange,
-        branch: branch_t) {
-    if block_range.include_end() {
-        assert!(block_range.start() <= block_range.end());
-    } else {
-        assert!(block_range.start() < block_range.end());
-    }
-
-    let block_interval = block_range.range();
-    if block_range.start() < block_count {
-        if block_range.range() == 1 {
-            state.yield_(BlockRange::new(
-                block_range.start(), block_range.start(), true)).await;
-        } else {
-            assert!(block_interval % (branch as u64) == 0);
-            let block_increment = block_interval / (branch as u64);
-            // Compute the hash for each branch
-            for slice_start in range_step(
-                    block_range.start(),
-                    block_range.start()+block_increment*branch as u64,
-                    block_increment) {
-                let slice_end = slice_start+block_increment;
-                let slice_range = BlockRange::new(slice_start, slice_end, false);
-                Box::pin(merkle_block_generator_helper(state, block_count, slice_range, branch)).await;
-            }
-            let start_block = block_range.start();
-            let end_block = block_range.end()-match block_range.include_end() {
-                true => 0,
-                false => 1
-            };
-            state.yield_(BlockRange::new(start_block, end_block, true)).await;
-        }
-    }
+    let block_count = file_len.div_ceil(block_size.into());
+    TreeBlockIter::new(block_count, branch)
 }
 
 // Iterator that reorders iterator I_B with type B and extractable key type A to match iterator I_A
@@ -138,4 +159,87 @@ where
     U: Iterator<Item = HashRange>
 {
     ReorderHashIter::new(ref_ordered_iter, hashrange_iter, |hashrange| hashrange.block_range())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use crate::merkle_utils::exp_ceil_log;
+
+    use num_iter::range_step;
+
+    use genawaiter::rc::{Co, Gen};
+
+    fn merkle_block_generator_recursive(file_len: u64, block_size: block_t, branch: branch_t) -> impl IntoIterator<Item = BlockRange> {
+        assert!(block_size != 0);
+        assert!(branch >= 2);
+        let block_count = match file_len.div_ceil(block_size.into()) {
+            0 => 1,
+            n => n
+        };
+        let effective_block_count = exp_ceil_log(block_count, branch);
+
+        let block_range = BlockRange::new(0, effective_block_count, false);
+        Gen::new(|state| async move {
+            merkle_block_generator_helper(&state,
+                block_count, block_range, branch).await;
+        })
+    }
+
+    async fn merkle_block_generator_helper(state: &Co<BlockRange>,
+            block_count: u64, block_range: BlockRange,
+            branch: branch_t) {
+        if block_range.include_end() {
+            assert!(block_range.start() <= block_range.end());
+        } else {
+            assert!(block_range.start() < block_range.end());
+        }
+
+        let block_interval = block_range.range();
+        if block_range.start() < block_count {
+            if block_range.range() == 1 {
+                state.yield_(BlockRange::new(
+                    block_range.start(), block_range.start(), true)).await;
+            } else {
+                assert!(block_interval % (branch as u64) == 0);
+                let block_increment = block_interval / (branch as u64);
+                // Compute the hash for each branch
+                for slice_start in range_step(
+                        block_range.start(),
+                        block_range.start()+block_increment*branch as u64,
+                        block_increment) {
+                    let slice_end = slice_start+block_increment;
+                    let slice_range = BlockRange::new(slice_start, slice_end, false);
+                    Box::pin(merkle_block_generator_helper(state, block_count, slice_range, branch)).await;
+                }
+                let start_block = block_range.start();
+                let end_block = block_range.end()-match block_range.include_end() {
+                    true => 0,
+                    false => 1
+                };
+                state.yield_(BlockRange::new(start_block, end_block, true)).await;
+            }
+        }
+    }
+    // Verify equivalence between old recursive impl and new impl
+    #[test]
+    fn block_iter_equivalences_clean() {
+        let ref_vec: Vec<_> = merkle_block_generator_recursive(16, 1, 4).into_iter().collect();
+        let new_vec: Vec<_> = merkle_block_generator(16, 1, 4).into_iter().collect();
+        assert_eq!(ref_vec, new_vec);
+    }
+
+    #[test]
+    fn block_iter_equivalences_ragged() {
+        let ref_vec: Vec<_> = merkle_block_generator_recursive(21, 1, 4).into_iter().collect();
+        let new_vec: Vec<_> = merkle_block_generator(21, 1, 4).into_iter().collect();
+        assert_eq!(ref_vec, new_vec);
+    }
+    #[test]
+    fn block_iter_equivalences_ragged_blocksize() {
+        let ref_vec: Vec<_> = merkle_block_generator_recursive(21, 2, 4).into_iter().collect();
+        let new_vec: Vec<_> = merkle_block_generator(21, 2, 4).into_iter().collect();
+        assert_eq!(ref_vec, new_vec);
+    }
 }
