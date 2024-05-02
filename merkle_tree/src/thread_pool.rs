@@ -8,7 +8,11 @@ use std::panic::{catch_unwind, UnwindSafe};
 use std::sync::{Arc, Mutex, Condvar};
 
 #[cfg(feature = "hwlocality")]
+use std::sync::OnceLock;
+#[cfg(feature = "hwlocality")]
 use hwlocality::Topology;
+#[cfg(feature = "hwlocality")]
+use hwlocality::errors::RawHwlocError;
 #[cfg(feature = "hwlocality")]
 use hwlocality::topology::support::{DiscoverySupport, FeatureSupport};
 #[cfg(feature = "hwlocality")]
@@ -23,6 +27,9 @@ use hwlocality::cpu::binding::CpuBindingFlags;
 use crossbeam_channel::{Sender, Receiver, bounded};
 
 use std::fmt::Debug;
+
+#[cfg(feature = "hwlocality")]
+static TOPOLOGY: OnceLock<Result<Topology, RawHwlocError>> = OnceLock::new();
 
 #[delegatable_trait]
 pub(crate) trait Joinable<T> {
@@ -101,12 +108,12 @@ impl EagerThreadPool {
         let mut handle_vec = Vec::with_capacity(thread_count);
         #[cfg(feature = "hwlocality")]
         let thread_binding_infos = {
-            let topology = Topology::new();
+            let topology = TOPOLOGY.get_or_init(Topology::new);
             match topology {
                 Ok(topo_ref) => {
                     let cpusets = get_cpu_affinities(&topo_ref, thread_count);
                     match cpusets {
-                        Some(vec) => Some((topo_ref, vec)),
+                        Some(vec) => Some(vec),
                         None => None
                     }
                 }
@@ -119,16 +126,19 @@ impl EagerThreadPool {
 
             #[cfg(feature = "hwlocality")]
             let thread_binding_info = thread_binding_infos.as_ref()
-                .map(|(topo, vec)| (topo.clone(), vec[i].clone()));
+                .map(|vec| {
+                    let mut cpuset = vec[i].clone();
+                    cpuset.singlify();
+                    cpuset
+                });
 
             handle_vec.push(thread::Builder::new()
-                .name(format!("eager_async_threadpool-{}", i))
+                .name(format!("eager_threadpool-{}", i))
                 .spawn(move || {
                     #[cfg(feature = "hwlocality")]
-                    if let Some((topo, cpuset)) = thread_binding_info {
+                    if let Some(cpuset) = thread_binding_info {
                         let tid = hwlocality::current_thread_id();
-                        let mut cpuset = cpuset.clone();
-                        cpuset.singlify();
+                        let topo = TOPOLOGY.get_or_init(Topology::new).as_ref().unwrap();
 
                         // Do the actual thread binding-if this fails we at most
                         // have degraded performance
