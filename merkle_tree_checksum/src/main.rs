@@ -249,7 +249,7 @@ fn run() -> i32 {
             match parse_functions::parse_version_line(&version_line) {
                 Ok(version) => {
                     // TODO: Do more precise version checking later
-                    let range_str = ">=0.5, <0.7";
+                    let range_str = ">=0.5, <0.8";
                     let recognized_range = VersionReq::parse(range_str).unwrap();
                     if !recognized_range.matches(&version) {
                         eprintln!("Error: hash file has unsupported version {}", version);
