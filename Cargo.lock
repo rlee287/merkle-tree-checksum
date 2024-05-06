@@ -778,8 +778,10 @@ dependencies = [
  "semver",
  "sha2",
  "sha3",
+ "snapbox",
  "strum",
  "strum_macros",
+ "tempfile",
  "trycmd",
  "walkdir",
 ]
@@ -1143,6 +1145,7 @@ version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ac441e1ecf678f68423d47f376d53fabce1afba92c8f68e31508eb27df8562a"
 dependencies = [
+ "anstream",
  "anstyle",
  "content_inspector",
  "dunce",
@@ -1163,6 +1166,9 @@ name = "snapbox-macros"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1c4b838b05d15ab22754068cb73500b2f3b07bf09d310e15b27f88160f1de40"
+dependencies = [
+ "anstream",
+]
 
 [[package]]
 name = "spin"

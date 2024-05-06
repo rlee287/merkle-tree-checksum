@@ -51,3 +51,5 @@ rustc_version = "0.4"
 [dev-dependencies]
 trycmd = {version = "0.15", default-features = false, features = ["diff", "filesystem"]}
 scopeguard = "1.1"
+snapbox = { version = "0.5.9", features = ["cmd"] }
+tempfile = "3.10.1"
