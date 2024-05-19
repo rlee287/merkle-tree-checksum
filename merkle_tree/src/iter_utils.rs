@@ -169,9 +169,8 @@ mod test {
 
     use num_iter::range_step;
 
-    use genawaiter::rc::{Co, Gen};
-
-    fn merkle_block_generator_recursive(file_len: u64, block_size: block_t, branch: branch_t) -> impl IntoIterator<Item = BlockRange> {
+    // Based on the old genawaiter impl but with vec building instead
+    fn merkle_block_generator_ref_impl(file_len: u64, block_size: block_t, branch: branch_t) -> Vec<BlockRange> {
         assert!(block_size != 0);
         assert!(branch >= 2);
         let block_count = match file_len.div_ceil(block_size.into()) {
@@ -181,13 +180,14 @@ mod test {
         let effective_block_count = exp_ceil_log(block_count, branch);
 
         let block_range = BlockRange::new(0, effective_block_count, false);
-        Gen::new(|state| async move {
-            merkle_block_generator_helper(&state,
-                block_count, block_range, branch).await;
-        })
+
+        let mut ret_vec = Vec::new();
+        merkle_block_generator_helper(&mut ret_vec,
+                block_count, block_range, branch);
+        ret_vec
     }
 
-    async fn merkle_block_generator_helper(state: &Co<BlockRange>,
+    fn merkle_block_generator_helper(state: &mut Vec<BlockRange>,
             block_count: u64, block_range: BlockRange,
             branch: branch_t) {
         if block_range.include_end() {
@@ -199,8 +199,8 @@ mod test {
         let block_interval = block_range.range();
         if block_range.start() < block_count {
             if block_range.range() == 1 {
-                state.yield_(BlockRange::new(
-                    block_range.start(), block_range.start(), true)).await;
+                state.push(BlockRange::new(
+                    block_range.start(), block_range.start(), true));
             } else {
                 assert!(block_interval % (branch as u64) == 0);
                 let block_increment = block_interval / (branch as u64);
@@ -211,34 +211,34 @@ mod test {
                         block_increment) {
                     let slice_end = slice_start+block_increment;
                     let slice_range = BlockRange::new(slice_start, slice_end, false);
-                    Box::pin(merkle_block_generator_helper(state, block_count, slice_range, branch)).await;
+                    merkle_block_generator_helper(state, block_count, slice_range, branch);
                 }
                 let start_block = block_range.start();
                 let end_block = block_range.end()-match block_range.include_end() {
                     true => 0,
                     false => 1
                 };
-                state.yield_(BlockRange::new(start_block, end_block, true)).await;
+                state.push(BlockRange::new(start_block, end_block, true));
             }
         }
     }
     // Verify equivalence between old recursive impl and new impl
     #[test]
     fn block_iter_equivalences_clean() {
-        let ref_vec: Vec<_> = merkle_block_generator_recursive(16, 1, 4).into_iter().collect();
+        let ref_vec: Vec<_> = merkle_block_generator_ref_impl(16, 1, 4);
         let new_vec: Vec<_> = merkle_block_generator(16, 1, 4).into_iter().collect();
         assert_eq!(ref_vec, new_vec);
     }
 
     #[test]
     fn block_iter_equivalences_ragged() {
-        let ref_vec: Vec<_> = merkle_block_generator_recursive(21, 1, 4).into_iter().collect();
+        let ref_vec: Vec<_> = merkle_block_generator_ref_impl(21, 1, 4);
         let new_vec: Vec<_> = merkle_block_generator(21, 1, 4).into_iter().collect();
         assert_eq!(ref_vec, new_vec);
     }
     #[test]
     fn block_iter_equivalences_ragged_blocksize() {
-        let ref_vec: Vec<_> = merkle_block_generator_recursive(21, 2, 4).into_iter().collect();
+        let ref_vec: Vec<_> = merkle_block_generator_ref_impl(21, 2, 4);
         let new_vec: Vec<_> = merkle_block_generator(21, 2, 4).into_iter().collect();
         assert_eq!(ref_vec, new_vec);
     }

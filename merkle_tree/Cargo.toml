@@ -22,11 +22,6 @@ hwlocality = { version = "1.0.0-alpha.3", default-features = false, optional = t
 sha2 = "0.10"
 permutohedron = "0.2"
 
-# The more popular "generator" library has potential unsoundness issues
-# Prefering genawaiter with more documentation and no stack-switch shenanigans
-# Was used by reference impl, which we keep for equivalence testing purposes
-genawaiter = {version = "0.99", default-features = false}
-
 [features]
 default = ["hwlocality"]
 hwlocality = ["dep:hwlocality"]
