@@ -236,6 +236,23 @@ mod test {
         let new_vec: Vec<_> = merkle_block_generator(21, 1, 4).into_iter().collect();
         assert_eq!(ref_vec, new_vec);
     }
+
+    #[test]
+    fn block_iter_equivalences_empty() {
+        let ref_vec: Vec<_> = merkle_block_generator_ref_impl(0, 1, 4);
+        let new_vec: Vec<_> = merkle_block_generator(0, 1, 4).into_iter().collect();
+        assert_eq!(ref_vec, new_vec);
+    }
+
+    #[test]
+    fn block_iter_equivalences_ranging() {
+        for i in 0..=32 {
+            let ref_vec: Vec<_> = merkle_block_generator_ref_impl(i, 1, 2);
+            let new_vec: Vec<_> = merkle_block_generator(i, 1, 2).into_iter().collect();
+            assert_eq!(ref_vec, new_vec);
+        }
+    }
+
     #[test]
     fn block_iter_equivalences_ragged_blocksize() {
         let ref_vec: Vec<_> = merkle_block_generator_ref_impl(21, 2, 4);
