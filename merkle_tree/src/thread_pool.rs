@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-use ambassador::delegatable_trait;
-
 use std::thread::{self, JoinHandle};
 use std::thread::Result as ThreadResult;
 use std::panic::{catch_unwind, UnwindSafe};
@@ -31,7 +29,6 @@ use std::fmt::Debug;
 #[cfg(feature = "hwlocality")]
 static TOPOLOGY: OnceLock<Result<Topology, RawHwlocError>> = OnceLock::new();
 
-#[delegatable_trait]
 pub(crate) trait Joinable<T> {
     fn join(self) -> T;
 }

@@ -24,8 +24,6 @@ pub use merkle_utils::{branch_t, block_t};
 pub use iter_utils::*;
 use thread_pool::{DummyHandle, ThreadPoolTaskHandle};
 
-use ambassador::Delegate;
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum HelperErrSignal {
     FileEOF,
@@ -34,8 +32,6 @@ enum HelperErrSignal {
 }
 
 #[derive(Debug)]
-#[derive(Delegate)]
-#[delegate(Joinable<T>)]
 enum EitherJoinable<T> {
     Dummy(DummyHandle<T>),
     Thread(ThreadPoolTaskHandle<T>)
@@ -48,6 +44,14 @@ impl<T> From<DummyHandle<T>> for EitherJoinable<T> {
 impl<T> From<ThreadPoolTaskHandle<T>> for EitherJoinable<T> {
     fn from(value: ThreadPoolTaskHandle<T>) -> Self {
         Self::Thread(value)
+    }
+}
+impl<T> Joinable<T> for EitherJoinable<T> {
+    fn join(self) -> T {
+        match self {
+            EitherJoinable::Dummy(d) => d.join(),
+            EitherJoinable::Thread(t) => t.join(),
+        }
     }
 }
 
