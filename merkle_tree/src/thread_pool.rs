@@ -23,8 +23,10 @@ use hwlocality::cpu::cpuset::CpuSet;
 use hwlocality::cpu::binding::CpuBindingFlags;
 
 use crossbeam_channel::{Sender, Receiver, bounded};
+use crossbeam_deque::{Injector, Worker, Stealer};
 
 use std::fmt::Debug;
+use std::sync::atomic::AtomicBool;
 
 #[cfg(feature = "hwlocality")]
 static TOPOLOGY: OnceLock<Result<Topology, RawHwlocError>> = OnceLock::new();
@@ -95,11 +97,38 @@ fn get_cpu_affinities(topology: &Topology, thread_count: usize) -> Option<Vec<Cp
 #[derive(Debug)]
 pub(crate) struct EagerThreadPool {
     thread_handles: Vec<JoinHandle<()>>,
-    task_tx: Option<Sender<Box<dyn FnOnce()+Send>>>
+    task_injector: Arc<Injector<Box<dyn FnOnce()+Send>>>,
+    //task_workers: Vec<Worker<Box<dyn FnOnce()+Send>>>,
+    task_stealers: Arc<Vec<Stealer<Box<dyn FnOnce()+Send>>>>,
+    pool_active: Arc<AtomicBool>
+    //task_tx: Option<Sender<Box<dyn FnOnce()+Send>>>
 }
 impl EagerThreadPool {
+    // Copied from crossbeam-deque documentation
+    fn find_task<T>(
+        local: &Worker<T>,
+        global: &Injector<T>,
+        stealers: &[Stealer<T>],
+    ) -> Option<T> {
+        // Pop a task from the local queue, if not empty.
+        local.pop().or_else(|| {
+            // Otherwise, we need to look for a task elsewhere.
+            std::iter::repeat_with(|| {
+                // Try stealing a batch of tasks from the global queue.
+                global.steal_batch_and_pop(local)
+                    // Or try stealing a task from one of the other threads.
+                    .or_else(|| stealers.iter().map(|s| s.steal()).collect())
+            })
+            // Loop while no task was stolen and any steal operation needs to be retried.
+            .find(|s| !s.is_retry())
+            // Extract the stolen task, if there is one.
+            .and_then(|s| s.success())
+        })
+    }
     pub fn new(thread_count: usize) -> Self {
-        let (tx, rx) = bounded(2*thread_count);
+        let injector: Arc<Injector<Box<dyn FnOnce() + Send>>> = Arc::new(Injector::new());
+        let mut stealer_vec = Vec::new();
+        let pool_active = Arc::new(AtomicBool::new(true));
 
         // Fail gracefully if we can't get CPU binding info for whatever reason
         let mut handle_vec = Vec::with_capacity(thread_count);
@@ -118,9 +147,16 @@ impl EagerThreadPool {
             }
         };
 
-        for i in 0..thread_count {
-            let rx_copy: Receiver<Box<dyn FnOnce()+Send>> = rx.clone();
+        let mut worker_vec = Vec::new();
+        for _ in 0..thread_count {
+            let worker = Worker::new_fifo();
+            stealer_vec.push(worker.stealer());
+            worker_vec.push(worker);
+        }
 
+        let stealer_vec = Arc::new(stealer_vec);
+
+        for i in 0..thread_count {
             #[cfg(feature = "hwlocality")]
             let thread_binding_info = thread_binding_infos.as_ref()
                 .map(|vec| {
@@ -128,6 +164,11 @@ impl EagerThreadPool {
                     cpuset.singlify();
                     cpuset
                 });
+
+            let pool_active_thread = pool_active.clone();
+            let worker = worker_vec.pop().unwrap();
+            let injector_thread = injector.clone();
+            let stealer_vec_thread = stealer_vec.clone();
 
             handle_vec.push(thread::Builder::new()
                 .name(format!("eager_threadpool-{}", i))
@@ -141,22 +182,29 @@ impl EagerThreadPool {
                         // have degraded performance
                         let _ = topo.bind_thread_cpu(tid, &cpuset, CpuBindingFlags::empty());
                     }
-                    while let Ok(func) = rx_copy.recv() {
-                        func();
+                    loop {
+                        match Self::find_task(&worker, &injector_thread, &stealer_vec_thread) {
+                            Some(func) => (func)(),
+                            None => {
+                                if pool_active_thread.load(std::sync::atomic::Ordering::Acquire) {
+                                    // TODO: this is effectively a spinloop
+                                    continue;
+                                }
+                            }
+                        }
                     }
                 })
             .unwrap());
         }
-        Self {thread_handles: handle_vec, task_tx: Some(tx)}
+        Self {thread_handles: handle_vec, task_injector: injector, task_stealers: stealer_vec, pool_active}
     }
     pub fn enqueue_task<T: Send+'static>(&self, func: impl FnOnce() -> T + UnwindSafe + Send + 'static) -> ThreadPoolTaskHandle<ThreadResult<T>> {
-        let tx_handle = self.task_tx.as_ref().unwrap();
         let state_handle = Arc::new(Mutex::new(None));
         let state_waiter = Arc::new(Condvar::new());
         let state_handle_thread = state_handle.clone();
         let state_waiter_thread = state_waiter.clone();
 
-        tx_handle.send(Box::new(move || {
+        self.task_injector.push(Box::new(move || {
             let return_value = catch_unwind(func);
 
             // After calling user code, update the state accordingly
@@ -166,15 +214,15 @@ impl EagerThreadPool {
             // Either notify_one or notify_all work because there should only be
             // one other handle
             state_waiter_thread.notify_all();
-        })).unwrap();
+        }));
         ThreadPoolTaskHandle::new(state_handle, state_waiter)
     }
 }
 
 impl Drop for EagerThreadPool {
     fn drop(&mut self) {
-        // Drop the send handle, which should hang up the recv channels in the threads
-        self.task_tx = None;
+        // Signal threadpool winding down via pool_active boolean
+        self.pool_active.store(false, std::sync::atomic::Ordering::Release);
         // Join the threads to wait for tasks to finish
         let handle_vec = std::mem::take(&mut self.thread_handles);
         for handle in handle_vec {

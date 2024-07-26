@@ -719,6 +719,7 @@ version = "0.5.0"
 dependencies = [
  "arrayvec",
  "crossbeam-channel",
+ "crossbeam-deque",
  "digest",
  "generic-array",
  "hex",
