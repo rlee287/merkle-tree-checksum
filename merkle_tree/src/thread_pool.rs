@@ -26,7 +26,7 @@ use crossbeam_channel::{Sender, Receiver, bounded};
 use crossbeam_deque::{Injector, Worker, Stealer};
 
 use std::fmt::Debug;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 #[cfg(feature = "hwlocality")]
 static TOPOLOGY: OnceLock<Result<Topology, RawHwlocError>> = OnceLock::new();
@@ -98,9 +98,9 @@ fn get_cpu_affinities(topology: &Topology, thread_count: usize) -> Option<Vec<Cp
 pub(crate) struct EagerThreadPool {
     thread_handles: Vec<JoinHandle<()>>,
     task_injector: Arc<Injector<Box<dyn FnOnce()+Send>>>,
-    //task_workers: Vec<Worker<Box<dyn FnOnce()+Send>>>,
-    task_stealers: Arc<Vec<Stealer<Box<dyn FnOnce()+Send>>>>,
-    pool_active: Arc<AtomicBool>
+    // Semantically an AtomicBool
+    tasks_enqueued: Arc<AtomicU32>,
+    pool_active: Arc<AtomicBool>,
     //task_tx: Option<Sender<Box<dyn FnOnce()+Send>>>
 }
 impl EagerThreadPool {
@@ -128,6 +128,7 @@ impl EagerThreadPool {
     pub fn new(thread_count: usize) -> Self {
         let injector: Arc<Injector<Box<dyn FnOnce() + Send>>> = Arc::new(Injector::new());
         let mut stealer_vec = Vec::new();
+        let tasks_enqueued = Arc::new(AtomicU32::new(0));
         let pool_active = Arc::new(AtomicBool::new(true));
 
         // Fail gracefully if we can't get CPU binding info for whatever reason
@@ -166,6 +167,7 @@ impl EagerThreadPool {
                 });
 
             let pool_active_thread = pool_active.clone();
+            let tasks_enqueued_thread = tasks_enqueued.clone();
             let worker = worker_vec.pop().unwrap();
             let injector_thread = injector.clone();
             let stealer_vec_thread = stealer_vec.clone();
@@ -186,9 +188,13 @@ impl EagerThreadPool {
                         match Self::find_task(&worker, &injector_thread, &stealer_vec_thread) {
                             Some(func) => (func)(),
                             None => {
-                                if pool_active_thread.load(std::sync::atomic::Ordering::Acquire) {
-                                    // TODO: this is effectively a spinloop
-                                    continue;
+                                tasks_enqueued_thread.store(0, Ordering::Release);
+                                if pool_active_thread.load(Ordering::Acquire) {
+                                    // If this wakes spuriously, then we check for tasks again
+                                    // We also rely on wake to recheck pool status
+                                    atomic_wait::wait(&tasks_enqueued_thread, 0);
+                                } else {
+                                    break;
                                 }
                             }
                         }
@@ -196,7 +202,7 @@ impl EagerThreadPool {
                 })
             .unwrap());
         }
-        Self {thread_handles: handle_vec, task_injector: injector, task_stealers: stealer_vec, pool_active}
+        Self {thread_handles: handle_vec, task_injector: injector, tasks_enqueued, pool_active}
     }
     pub fn enqueue_task<T: Send+'static>(&self, func: impl FnOnce() -> T + UnwindSafe + Send + 'static) -> ThreadPoolTaskHandle<ThreadResult<T>> {
         let state_handle = Arc::new(Mutex::new(None));
@@ -215,6 +221,9 @@ impl EagerThreadPool {
             // one other handle
             state_waiter_thread.notify_all();
         }));
+        self.tasks_enqueued.store(1, Ordering::Release);
+        atomic_wait::wake_one(Arc::as_ptr(&self.tasks_enqueued));
+
         ThreadPoolTaskHandle::new(state_handle, state_waiter)
     }
 }
@@ -222,7 +231,9 @@ impl EagerThreadPool {
 impl Drop for EagerThreadPool {
     fn drop(&mut self) {
         // Signal threadpool winding down via pool_active boolean
-        self.pool_active.store(false, std::sync::atomic::Ordering::Release);
+        self.pool_active.store(false, Ordering::Release);
+        // Wake all threads that may be waiting for new tasks
+        atomic_wait::wake_all(Arc::as_ptr(&self.tasks_enqueued));
         // Join the threads to wait for tasks to finish
         let handle_vec = std::mem::take(&mut self.thread_handles);
         for handle in handle_vec {
