@@ -22,7 +22,6 @@ use hwlocality::cpu::cpuset::CpuSet;
 #[cfg(feature = "hwlocality")]
 use hwlocality::cpu::binding::CpuBindingFlags;
 
-use crossbeam_channel::{Sender, Receiver, bounded};
 use crossbeam_deque::{Injector, Worker, Stealer};
 
 use std::fmt::Debug;
@@ -101,29 +100,34 @@ pub(crate) struct EagerThreadPool {
     // Semantically an AtomicBool
     tasks_enqueued: Arc<AtomicU32>,
     pool_active: Arc<AtomicBool>,
-    //task_tx: Option<Sender<Box<dyn FnOnce()+Send>>>
 }
 impl EagerThreadPool {
-    // Copied from crossbeam-deque documentation
+    // Lightly modified from crossbeam-deque documentation
     fn find_task<T>(
         local: &Worker<T>,
         global: &Injector<T>,
         stealers: &[Stealer<T>],
     ) -> Option<T> {
         // Pop a task from the local queue, if not empty.
-        local.pop().or_else(|| {
-            // Otherwise, we need to look for a task elsewhere.
-            std::iter::repeat_with(|| {
-                // Try stealing a batch of tasks from the global queue.
-                global.steal_batch_and_pop(local)
-                    // Or try stealing a task from one of the other threads.
-                    .or_else(|| stealers.iter().map(|s| s.steal()).collect())
-            })
-            // Loop while no task was stolen and any steal operation needs to be retried.
-            .find(|s| !s.is_retry())
-            // Extract the stolen task, if there is one.
-            .and_then(|s| s.success())
+        // Otherwise, look for a task elsewhere.
+        local.pop().or_else(|| Self::find_nonlocal_task(local, global, stealers))
+    }
+    fn find_nonlocal_task<T>(
+        local: &Worker<T>,
+        global: &Injector<T>,
+        stealers: &[Stealer<T>],
+    ) -> Option<T> {
+        // Look for a task elsewhere, assuming local queue is empty.
+        std::iter::repeat_with(|| {
+            // Try stealing a batch of tasks from the global queue.
+            global.steal_batch_and_pop(local)
+                // Or try stealing a task from one of the other threads.
+                .or_else(|| stealers.iter().map(|s| s.steal()).collect())
         })
+        // Loop while no task was stolen and any steal operation needs to be retried.
+        .find(|s| !s.is_retry())
+        // Extract the stolen task, if there is one.
+        .and_then(|s| s.success())
     }
     pub fn new(thread_count: usize) -> Self {
         let injector: Arc<Injector<Box<dyn FnOnce() + Send>>> = Arc::new(Injector::new());
@@ -188,10 +192,14 @@ impl EagerThreadPool {
                         match Self::find_task(&worker, &injector_thread, &stealer_vec_thread) {
                             Some(func) => (func)(),
                             None => {
+                                // Task could have been enqueued here, such that we incorrectly set the flag to 0...
                                 tasks_enqueued_thread.store(0, Ordering::Release);
-                                if pool_active_thread.load(Ordering::Acquire) {
+                                // ...so check other places one more time before blocking
+                                if let Some(func) = Self::find_nonlocal_task(&worker, &injector_thread, &stealer_vec_thread) {
+                                    (func)();
+                                } else if pool_active_thread.load(Ordering::Acquire) {
                                     // If this wakes spuriously, then we check for tasks again
-                                    // We also rely on wake to recheck pool status
+                                    // We also rely on wake to recheck pool status and finish any remaining tasks on shutdown
                                     atomic_wait::wait(&tasks_enqueued_thread, 0);
                                 } else {
                                     break;
@@ -222,6 +230,8 @@ impl EagerThreadPool {
             state_waiter_thread.notify_all();
         }));
         self.tasks_enqueued.store(1, Ordering::Release);
+        // Enqueued one task -> wake one thread, avoiding thundering herd
+        // Spurious wakeups reduce impact of potential incorrect-blocking bugs in threadpool
         atomic_wait::wake_one(Arc::as_ptr(&self.tasks_enqueued));
 
         ThreadPoolTaskHandle::new(state_handle, state_waiter)
