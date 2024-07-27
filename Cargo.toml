@@ -15,6 +15,10 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.regex]
 opt-level = 3
+[profile.dev.package.crossbeam-channel]
+opt-level = 3
+[profile.dev.package.crossbeam-deque]
+opt-level = 3
 
 [profile.profile]
 inherits = "release"
