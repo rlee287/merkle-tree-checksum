@@ -36,7 +36,9 @@ pub(crate) trait Joinable<T> {
 
 #[derive(Debug)]
 pub(crate) struct ThreadPoolTaskHandle<T> {
+    // Holds the result from the thread, when it's ready
     thread_out: Arc<Mutex<Option<T>>>,
+    // Condition variable used to block on the result being ready
     thread_waiter: Arc<Condvar>
 }
 impl<T> ThreadPoolTaskHandle<T> {
@@ -103,6 +105,7 @@ pub(crate) struct EagerThreadPool {
 }
 impl EagerThreadPool {
     // Lightly modified from crossbeam-deque documentation
+    // These don't take &self because we want to call these inside threads
     fn find_task<T>(
         local: &Worker<T>,
         global: &Injector<T>,
@@ -131,7 +134,6 @@ impl EagerThreadPool {
     }
     pub fn new(thread_count: usize) -> Self {
         let injector: Arc<Injector<Box<dyn FnOnce() + Send>>> = Arc::new(Injector::new());
-        let mut stealer_vec = Vec::new();
         let tasks_enqueued = Arc::new(AtomicU32::new(0));
         let pool_active = Arc::new(AtomicBool::new(true));
 
@@ -152,14 +154,14 @@ impl EagerThreadPool {
             }
         };
 
+        // Create worker and stealer queues
         let mut worker_vec = Vec::new();
         for _ in 0..thread_count {
             let worker = Worker::new_fifo();
-            stealer_vec.push(worker.stealer());
             worker_vec.push(worker);
         }
 
-        let stealer_vec = Arc::new(stealer_vec);
+        let stealer_vec = Arc::new(worker_vec.iter().map(|w| w.stealer()).collect::<Vec<_>>());
 
         for i in 0..thread_count {
             #[cfg(feature = "hwlocality")]
