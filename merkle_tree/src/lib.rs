@@ -135,17 +135,15 @@ where
             }
 
 
-            let file_read_result = read_exact_vec(file, Some(current_pos),
-                block_size_as_usize);
-            let file_vec: Vec<u8>;
-
-            if let Ok(vec) = file_read_result {
-                file_vec = vec;
-            } else {
-                // Err() for returned error, Ok() for no panic
-                let read_err = DummyHandle::new(Ok(Err(HelperErrSignal::FileReadErr)));
-                return read_err.into()
-            }
+            let file_vec = match read_exact_vec(file, Some(current_pos),
+                    block_size_as_usize) {
+                Ok(vec) => vec,
+                Err(_) => {
+                    // Err() for returned error, Ok() for no panic
+                    let read_err = DummyHandle::new(Ok(Err(HelperErrSignal::FileReadErr)));
+                    return read_err.into();
+                }
+            };
 
             current_pos += file_vec.len() as u64;
             let end_byte_file = current_pos.saturating_sub(1);
@@ -207,14 +205,9 @@ where
                         // so dropping them does not hang up a channel
                         break;
                     },
-                    Err(HelperErrSignal::FileReadErr) => {
+                    Err(e) => {
                         // Err() for returned error, Ok() for no panic
-                        let dummy_err = DummyHandle::new(Ok(Err(HelperErrSignal::FileReadErr)));
-                        return dummy_err.into();
-                    },
-                    Err(HelperErrSignal::ConsumerErr) => {
-                        // Err() for returned error, Ok() for no panic
-                        let dummy_err = DummyHandle::new(Ok(Err(HelperErrSignal::ConsumerErr)));
+                        let dummy_err = DummyHandle::new(Ok(Err(e)));
                         return dummy_err.into();
                     }
                 }
