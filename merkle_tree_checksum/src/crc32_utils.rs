@@ -1,4 +1,4 @@
-// Update of https://github.com/ajungren/crc32_digest to work with digest v0.9
+// Update of https://github.com/ajungren/crc32_digest to work with newer digest
 #![forbid(unsafe_code)]
 
 use crc32fast::Hasher as Crc32Hasher;
@@ -16,19 +16,6 @@ pub use digest::Digest;
 /// [`Hasher`]: ../crc32fast/struct.Hasher.html
 pub struct Crc32(Crc32Hasher);
 
-/*impl Crc32 {
-    /// Creates a new `Crc32`.
-    #[inline]
-    pub fn new() -> Self {
-        Self(Hasher::new())
-    }
-
-    /// Creates a new `Crc32` initialized with the given state.
-    #[inline]
-    pub fn from_state(state: u32) -> Self {
-        Self(Hasher::new_with_initial(state))
-    }
-}*/
 impl OutputSizeUser for Crc32 {
     type OutputSize = U4;
 }
@@ -56,4 +43,15 @@ impl Reset for Crc32 {
     }
 }
 
-//impl_write!(Crc32);
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn assert_impls_digest<D: Digest>(_digester: &D) {}
+
+    #[test]
+    fn test_crc32_impl_digest() {
+        let crc32 = Crc32::default();
+        assert_impls_digest(&crc32);
+    }
+}
