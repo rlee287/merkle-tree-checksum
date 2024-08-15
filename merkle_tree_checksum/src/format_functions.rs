@@ -16,7 +16,6 @@ pub(crate) fn abbreviate_filename(name: &str, len_threshold: usize) -> Cow<'_, s
         let (idx, _) = name.char_indices().nth(len_threshold+1).unwrap();
         debug_assert_eq!(name[..idx].chars().count(), len_threshold);
         return Cow::Borrowed(&name[..idx]);
-        //return Cow::Owned(name.chars().take(len_threshold).collect());
     } else {
         let name_chars = name.chars().collect::<Vec<_>>();
         // Join the beginning and end part of the name with ~
