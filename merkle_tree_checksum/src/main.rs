@@ -4,6 +4,7 @@ mod crc32_utils;
 mod utils;
 mod error_types;
 mod format_functions;
+mod file_header;
 mod parse_functions;
 
 use std::thread;
@@ -33,6 +34,7 @@ use utils::StoredAndComputed;
 use utils::TreeParams;
 use utils::ChannelOrPb;
 use error_types::{PreHashError, HeaderParsingErr, VerificationError};
+use file_header::FileHeader;
 
 use std::convert::TryFrom;
 
@@ -47,8 +49,6 @@ use git_version::git_version;
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
 const VERIFY_HASH_CMD_NAME: &str = "verify-hash";
-
-const EMPTY_STRING: String = String::new();
 
 const HELP_STR_HASH_LIST: &str = concat!("Supported hash functions are ",
     "the SHA2 family, the SHA3 family, Blake2b/Blake2s, Blake3, ",
@@ -186,41 +186,9 @@ fn run() -> i32 {
 
     let mut hashing_final_status = 0;
 
-    let (file_list_result, tree_params, short_output, verify_start_pos):
-            (Vec<(String, Option<PreHashError>)>, TreeParams, bool, Option<u64>)
-            = match cmd_chosen {
+    let file_header_info = match cmd_chosen {
         HashCommand::GenerateHash(None) => {
-            let file_vec: Vec<_> = cmd_matches.get_many::<String>("FILES").unwrap().collect();
-            // Validators should already have caught errors
-            (
-                {
-                    let mut collect_vec: Vec<_> = Vec::with_capacity(
-                        file_vec.len());
-                    for file_path in file_vec {
-                        match utils::str_to_files(file_path) {
-                            Some(paths) => {
-                                for path in paths {
-                                    match File::open(&path) {
-                                        Ok(_) => collect_vec.push((path.to_string_lossy().into_owned(), None)),
-                                        Err(_) => collect_vec.push((path.to_string_lossy().into_owned(), Some(PreHashError::ReadPermissionError)))
-                                    }
-                                }
-                            },
-                            None => collect_vec.push((file_path.to_owned(), Some(PreHashError::FileNotFound)))
-                        }
-                    };
-                    collect_vec
-                },
-                // unwraps will always succeed due to default values
-                TreeParams {
-                    // block_size has a special parser invoked in parse_cli
-                    block_size: *cmd_matches.get_one("blocksize").unwrap(),
-                    branch_factor: *cmd_matches.get_one("branch").unwrap(),
-                    hash_function: *cmd_matches.get_one("hash").unwrap()
-                },
-                cmd_matches.get_flag("short"),
-                None
-            )
+            FileHeader::from_arg_matches(&cmd_matches)
         },
         HashCommand::VerifyHash(None) => {
             let hash_file_str = cmd_matches.get_one::<String>("FILE").unwrap();
@@ -234,7 +202,6 @@ fn run() -> i32 {
             };
             let mut hash_file_reader = BufReader::new(hash_file);
 
-            let mut file_vec: Vec<(String, Option<PreHashError>)> = Vec::new();
             // Parse version number
             let mut version_line = String::new();
             let version_read_result = hash_file_reader.read_line(&mut version_line);
@@ -264,141 +231,16 @@ fn run() -> i32 {
                     _ => unreachable!()
                 }
             }
-            // Read in the next three lines
-            let mut hash_param_arr = [EMPTY_STRING; 3];
-            for param_str in hash_param_arr.iter_mut() {
-                let mut line = String::new();
-                let line_result = hash_file_reader.read_line(&mut line);
-                if line_result.is_ok() {
-                    assert!(line.ends_with('\n'));
-                    if &line[line.len()-2..line.len()-1] == "\r" {
-                        // \r\n ending
-                        *param_str = line[..line.len()-2].to_string();
-                    } else {
-                        // \n ending
-                        *param_str = line[..line.len()-1].to_string();
-                    }
-                } else {
-                    eprintln!("Error: unable to read in parameter line");
-                    return VERIF_READ_ERR;
-                }
+            match FileHeader::from_file(&mut hash_file_reader) {
+                Ok(header) => header,
+                Err(e) => {return e}
             }
-            let tree_param_result = TreeParams::from_lines(&hash_param_arr);
-            if let Err(other_errors) = tree_param_result {
-                for error in other_errors {
-                    eprintln!("Error: {}", error);
-                }
-                return VERIF_BAD_HEADER_ERR;
-            }
-
-            let mut format_line = String::new();
-            let format_line_result = hash_file_reader.read_line(&mut format_line);
-            if format_line_result.is_err() {
-                eprintln!("Error: hash file is malformed: unable to read hashes or file list");
-                return VERIF_READ_ERR;
-            }
-            let is_short_hash = match format_line.as_str() {
-                "Hashes:\n" | "Hashes:\r\n" => true,
-                "Files:\n" | "Files:\r\n" => false,
-                _ => {
-                    eprintln!("Error: hash file is malformed: file should have file list or hash list");
-                    return VERIF_BAD_HEADER_ERR;
-                }
-            };
-            let list_begin_pos: Option<u64> = match is_short_hash {
-                true => Some(
-                    hash_file_reader.stream_position().unwrap()
-                ),
-                false => None
-            };
-            loop {
-                let mut next_line = String::new();
-                let next_line_result = hash_file_reader.read_line(&mut next_line);
-                if let Err(read_err) = next_line_result {
-                    if read_err.kind() == std::io::ErrorKind::UnexpectedEof {
-                        if !is_short_hash {
-                            eprintln!("Error: unexpected EOF reading hashes");
-                            return VERIF_BAD_HEADER_ERR;
-                        }
-                    } else {
-                        eprintln!("Error: Error in reading file: {}", read_err);
-                        return VERIF_READ_ERR;
-                    }
-                }
-                if let Ok((quoted_name, len_option)) = parse_functions::extract_quoted_filename(&next_line) {
-                    assert_eq!(len_option.is_none(), is_short_hash);
-                    let unquoted_name = match enquote::unquote(quoted_name) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            eprintln!("Error: unable to unquote file name {}: {}",
-                                quoted_name, e);
-                            if is_short_hash {
-                                return VERIF_BAD_ENTRY_ERR;
-                            } else {
-                                return VERIF_BAD_HEADER_ERR;
-                            }
-                        }
-                    };
-                    let path = PathBuf::from(unquoted_name);
-                    if path.is_file() {
-                        if File::open(&path).is_err() {
-                            // We already checked file existence
-                            file_vec.push((path.to_string_lossy().into_owned(),
-                                Some(PreHashError::ReadPermissionError)))
-                        } else if let Some(expected_len) = len_option {
-                            let actual_len = path.metadata().unwrap().len();
-                            if actual_len == expected_len {
-                                file_vec.push((path.to_string_lossy().into_owned(), None));
-                            } else {
-                                let mismatch_len_obj = StoredAndComputed::new
-                                    (expected_len, actual_len);
-                                file_vec.push((
-                                    path.to_string_lossy().into_owned(),
-                                    Some(PreHashError::MismatchedLength(
-                                        mismatch_len_obj
-                                    )))
-                                )
-                            }
-                        } else {
-                            file_vec.push((path.to_string_lossy().into_owned(), None))
-                        }
-                    } else {
-                        file_vec.push(
-                            (
-                                path.to_string_lossy().into_owned(),
-                                Some(PreHashError::FileNotFound))
-                            )
-                    }
-                } else if next_line == "Hashes:\n" || next_line == "Hashes:\r\n" {
-                    assert!(!is_short_hash);
-                    break;
-                } else if next_line.is_empty() {
-                    assert!(is_short_hash);
-                    break;
-                } else {
-                    eprintln!("Error: encountered malformed file entry {:?}",
-                        next_line);
-                    return VERIF_BAD_HEADER_ERR;
-                }
-            }
-            assert!(is_short_hash == list_begin_pos.is_some());
-            if let Some(seek_pos) = list_begin_pos {
-                hash_file_reader.seek(SeekFrom::Start(seek_pos)).unwrap();
-            }
-
-            (
-                file_vec,
-                tree_param_result.unwrap(),
-                is_short_hash,
-                // We want to ensure that the seek call succeeded
-                Some(hash_file_reader.stream_position().unwrap())
-            )
         },
         _ => unreachable!()
     };
     let mut abort: Result<(), i32> = Ok(());
     // Bool is whether to process this file or not
-    let file_list: Vec<(PathBuf, bool)> = file_list_result.into_iter().map(|(path_str, err_opt)| {
+    let file_list: Vec<(PathBuf, bool)> = file_header_info.file_vec().into_iter().map(|(path_str, err_opt)| {
         if let Some(err) = err_opt {
             eprintln!("Error with file {}: {}",
                     path_str, err);
@@ -434,9 +276,9 @@ fn run() -> i32 {
     let thread_count = *matches.get_one::<usize>("jobs")
         .unwrap();
 
-    let hash_enum: HashFunctions = tree_params.hash_function;
-    let block_size: block_t = tree_params.block_size;
-    let branch_factor: branch_t = tree_params.branch_factor;
+    let hash_enum: HashFunctions = file_header_info.hash_function();
+    let block_size: block_t = file_header_info.block_size();
+    let branch_factor: branch_t = file_header_info.branch_factor();
     // TODO: use the duplicate crate for macro-ing this?
     let merkle_tree_thunk = match hash_enum {
         HashFunctions::crc32 =>
@@ -468,7 +310,7 @@ fn run() -> i32 {
         eprintln!("Warning: CRC32 is not cryptographically secure and will only prevent accidental corruption");
     }
     if quiet_count < 2 && matches!(cmd_chosen, HashCommand::VerifyHash(_))
-            && !short_output && !cmd_matches.get_flag("failfast") {
+            && !file_header_info.short_output() && !cmd_matches.get_flag("failfast") {
         eprintln!(
             concat!("Warning: Verification of long hashes may fail early ",
                 "if the hash file is malformed, ",
@@ -497,9 +339,9 @@ fn run() -> i32 {
             // Write file prelude
             writeln!(file_handle, "{} v{}", crate_name!(), crate_version!()).unwrap();
             // tree_params Display impl includes ending newline
-            write!(file_handle, "{}", tree_params).unwrap();
+            write!(file_handle, "{}", file_header_info).unwrap();
 
-            if !short_output {
+            if !file_header_info.short_output() {
                 writeln!(file_handle, "Files:").unwrap();
                 let list_str: Vec<String> = file_list.iter()
                     .filter_map(|(pathbuf, keep)| {
@@ -524,7 +366,7 @@ fn run() -> i32 {
             writeln!(file_handle, "Hashes:").unwrap();
             file_handle.flush().unwrap();
 
-            debug_assert!(verify_start_pos.is_none());
+            debug_assert!(file_header_info.verify_stream_pos().is_none());
             cmd_chosen = HashCommand::GenerateHash(Some(file_handle));
         },
         HashCommand::VerifyHash(None) => {
@@ -537,7 +379,7 @@ fn run() -> i32 {
                     return VERIF_READ_ERR;
                 }
             };
-            hash_file.seek(SeekFrom::Start(verify_start_pos.unwrap())).unwrap();
+            hash_file.seek(SeekFrom::Start(file_header_info.verify_stream_pos().unwrap())).unwrap();
             cmd_chosen = HashCommand::VerifyHash(Some(BufReader::new(hash_file)))
         },
         _ => unreachable!()
@@ -556,7 +398,7 @@ fn run() -> i32 {
                 }
             }
             if let HashCommand::VerifyHash(Some(ref mut r)) = cmd_chosen {
-                if short_output {
+                if file_header_info.short_output() {
                     let mut hash_line = String::new();
                     r.read_line(&mut hash_line).unwrap();
                     // Still check line format, and warn if entry is malformed
@@ -645,7 +487,7 @@ fn run() -> i32 {
             pb_hash.set_message("Hash");
         }
 
-        let (tx, rx, pb_hash): (ChannelOrPb<_>, _, _) = match short_output {
+        let (tx, rx, pb_hash): (ChannelOrPb<_>, _, _) = match file_header_info.short_output() {
             true => (pb_hash.into(), None, None),
             false => {
                 let (tx, rx) = bounded_channel::<HashRange>(16);
@@ -738,7 +580,7 @@ fn run() -> i32 {
         }
         let final_hash_option = thread_handle.join().unwrap();
 
-        if short_output {
+        if file_header_info.short_output() {
             /*
              * Only using final result for short output
              * A None result means the channel hung up
@@ -791,7 +633,7 @@ fn run() -> i32 {
             Err(err) => {
                 eprintln!("Error verifying file {}: {}", filename_str, err);
                 // TODO: error recovery when not using failfast
-                if cmd_matches.get_flag("failfast") || !short_output {
+                if cmd_matches.get_flag("failfast") || !file_header_info.short_output() {
                     return VERIF_BAD_ENTRY_ERR;
                 }
                 // Long output and failfast not specified
