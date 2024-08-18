@@ -1,9 +1,4 @@
 #![forbid(unsafe_code)]
-extern crate merkle_tree;
-#[macro_use]
-extern crate clap;
-
-extern crate enquote;
 
 mod crc32_utils;
 mod utils;
@@ -43,6 +38,7 @@ use std::convert::TryFrom;
 
 use const_format::formatcp;
 
+use clap::{crate_authors, crate_description, crate_name, crate_version};
 use clap::{Command, Arg, ArgAction, ArgMatches};
 use clap::builder::EnumValueParser;
 

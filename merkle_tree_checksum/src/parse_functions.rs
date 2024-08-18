@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use clap::crate_name;
+
 use semver::Version;
 
 use std::sync::{Arc, OnceLock};
