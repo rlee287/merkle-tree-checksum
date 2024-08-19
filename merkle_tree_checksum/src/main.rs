@@ -124,6 +124,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
                 "This will make identifying corrupted locations impossible.")))
         .arg(Arg::new("FILES").required(true)
             .action(ArgAction::Append)
+            .value_parser(clap::value_parser!(PathBuf))
             .last(true)
             .num_args(1..=u16::MAX.into())
             .help("Files to hash"));
@@ -136,6 +137,7 @@ fn parse_cli() -> Result<ArgMatches, clap::Error> {
                 "when a hash mismatch is detected.")))
         .arg(Arg::new("FILE").required(true)
             .action(ArgAction::Set)
+            .value_parser(clap::value_parser!(PathBuf))
             .help("File containing the hashes to check"));
 
     let clap_app = Command::new(crate_name!())
@@ -191,12 +193,12 @@ fn run() -> i32 {
             FileHeader::from_arg_matches(&cmd_matches)
         },
         HashCommand::VerifyHash(None) => {
-            let hash_file_str = cmd_matches.get_one::<String>("FILE").unwrap();
-            let hash_file = match File::open(hash_file_str) {
+            let hash_file_path = cmd_matches.get_one::<PathBuf>("FILE").unwrap();
+            let hash_file = match File::open(hash_file_path) {
                 Ok(file) => file,
                 Err(e) => {
                     eprintln!("Error opening hash file {}: {}",
-                            hash_file_str, e);
+                            hash_file_path.display(), e);
                     return VERIF_READ_ERR;
                 }
             };
@@ -242,8 +244,7 @@ fn run() -> i32 {
     // Bool is whether to process this file or not
     let file_list: Vec<(PathBuf, bool)> = file_header_info.file_vec().into_iter().map(|(path_str, err_opt)| {
         if let Some(err) = err_opt {
-            eprintln!("Error with file {}: {}",
-                    path_str, err);
+            eprintln!("Error with file {}: {}", path_str.display(), err);
             hashing_final_status = 1;
             match err {
                 PreHashError::MismatchedLength(_) => {
@@ -370,12 +371,12 @@ fn run() -> i32 {
             cmd_chosen = HashCommand::GenerateHash(Some(file_handle));
         },
         HashCommand::VerifyHash(None) => {
-            let read_file_name = cmd_matches.get_one::<String>("FILE").unwrap();
+            let read_file_name = cmd_matches.get_one::<PathBuf>("FILE").unwrap();
             let mut hash_file = match File::open(read_file_name) {
                 Ok(file) => file,
                 Err(e) => {
                     eprintln!("Error opening hash file {}: {}",
-                            read_file_name, e);
+                            read_file_name.display(), e);
                     return VERIF_READ_ERR;
                 }
             };

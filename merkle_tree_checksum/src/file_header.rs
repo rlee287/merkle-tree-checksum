@@ -14,7 +14,7 @@ use clap::ArgMatches;
 
 #[derive(Debug, Clone)]
 pub(crate) struct FileHeader {
-    file_vec: Vec<(String, Option<PreHashError>)>,
+    file_vec: Vec<(PathBuf, Option<PreHashError>)>,
     block_size: block_t,
     branch_factor: branch_t,
     hash_function: HashFunctions,
@@ -25,15 +25,15 @@ pub(crate) struct FileHeader {
 
 impl FileHeader {
     pub fn from_arg_matches(args: &ArgMatches) -> Self {
-        let file_vec: Vec<_> = args.get_many::<String>("FILES").unwrap().collect();
+        let file_vec: Vec<_> = args.get_many::<PathBuf>("FILES").unwrap().collect();
         let mut collect_vec: Vec<_> = Vec::with_capacity(file_vec.len());
         for file_path in file_vec {
             match str_to_files(file_path) {
                 Some(paths) => {
                     for path in paths {
                         match File::open(&path) {
-                            Ok(_) => collect_vec.push((path.to_string_lossy().into_owned(), None)),
-                            Err(_) => collect_vec.push((path.to_string_lossy().into_owned(), Some(PreHashError::ReadPermissionError)))
+                            Ok(_) => collect_vec.push((path, None)),
+                            Err(_) => collect_vec.push((path, Some(PreHashError::ReadPermissionError)))
                         }
                     }
                 },
@@ -52,7 +52,7 @@ impl FileHeader {
         }
     }
     pub fn from_file<F: Read+BufRead+Seek>(file: &mut F) -> Result<Self, i32> {
-        let mut file_vec: Vec<(String, Option<PreHashError>)> = Vec::new();
+        let mut file_vec = Vec::new();
         // TODO: this was moved from main; do cleanup
         const EMPTY_STRING: String = String::new();
         // Read in the next three lines
@@ -136,29 +136,29 @@ impl FileHeader {
                 if path.is_file() {
                     if File::open(&path).is_err() {
                         // We already checked file existence
-                        file_vec.push((path.to_string_lossy().into_owned(),
+                        file_vec.push((path,
                             Some(PreHashError::ReadPermissionError)))
                     } else if let Some(expected_len) = len_option {
                         let actual_len = path.metadata().unwrap().len();
                         if actual_len == expected_len {
-                            file_vec.push((path.to_string_lossy().into_owned(), None));
+                            file_vec.push((path, None));
                         } else {
                             let mismatch_len_obj = StoredAndComputed::new
                                 (expected_len, actual_len);
                             file_vec.push((
-                                path.to_string_lossy().into_owned(),
+                                path,
                                 Some(PreHashError::MismatchedLength(
                                     mismatch_len_obj
                                 )))
                             )
                         }
                     } else {
-                        file_vec.push((path.to_string_lossy().into_owned(), None))
+                        file_vec.push((path, None))
                     }
                 } else {
                     file_vec.push(
                         (
-                            path.to_string_lossy().into_owned(),
+                            path,
                             Some(PreHashError::FileNotFound))
                         )
                 }
@@ -189,7 +189,7 @@ impl FileHeader {
         })
     }
 
-    pub(crate) fn file_vec(&self) -> &[(String, Option<PreHashError>)] {
+    pub(crate) fn file_vec(&self) -> &[(PathBuf, Option<PreHashError>)] {
         &self.file_vec
     }
     pub(crate) fn block_size(&self) -> block_t {
