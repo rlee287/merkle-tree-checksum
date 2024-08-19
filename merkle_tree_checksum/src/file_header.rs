@@ -61,7 +61,11 @@ impl FileHeader {
             let mut line = String::new();
             let line_result = file.read_line(&mut line);
             if line_result.is_ok() {
-                assert!(line.ends_with('\n'));
+                // Needed because file might EOF early without newline
+                if !(line.ends_with('\n')) {
+                    eprintln!("Error: unable to read in parameter line (EOF)");
+                    return Err(crate::VERIF_READ_ERR);
+                }
                 if &line[line.len()-2..line.len()-1] == "\r" {
                     // \r\n ending
                     *param_str = line[..line.len()-2].to_string();
@@ -174,6 +178,7 @@ impl FileHeader {
                 return Err(crate::VERIF_BAD_HEADER_ERR);
             }
         }
+        // In short mode we need to seek back to before the hash list
         assert!(is_short_hash == list_begin_pos.is_some());
         if let Some(seek_pos) = list_begin_pos {
             file.seek(SeekFrom::Start(seek_pos)).unwrap();

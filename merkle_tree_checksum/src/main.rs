@@ -387,6 +387,7 @@ fn run() -> i32 {
     };
 
     for (file_index, (file_name, process)) in file_list.iter().enumerate() {
+        // TODO: handle non-unicode filenames as well as ANSI control chars
         let filename_str = file_name.to_str().unwrap();
         if !process {
             if quiet_count <= 1 {
