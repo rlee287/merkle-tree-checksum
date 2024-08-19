@@ -19,8 +19,6 @@ pub(crate) struct FileHeader {
     branch_factor: branch_t,
     hash_function: HashFunctions,
     short_output: bool,
-    // TODO: remove this one maybe?
-    verify_stream_pos: Option<u64>
 }
 
 impl FileHeader {
@@ -48,7 +46,6 @@ impl FileHeader {
             branch_factor: *args.get_one("branch").unwrap(),
             hash_function: *args.get_one("hash").unwrap(),
             short_output: args.get_flag("short"),
-            verify_stream_pos: None
         }
     }
     pub fn from_file<F: Read+BufRead+Seek>(file: &mut F) -> Result<Self, i32> {
@@ -190,7 +187,6 @@ impl FileHeader {
             branch_factor: tree_param.branch_factor,
             hash_function: tree_param.hash_function,
             short_output: is_short_hash,
-            verify_stream_pos: Some(file.stream_position().unwrap())
         })
     }
 
@@ -208,9 +204,6 @@ impl FileHeader {
     }
     pub(crate) fn short_output(&self) -> bool {
         self.short_output
-    }
-    pub(crate) fn verify_stream_pos(&self) -> Option<u64> {
-        self.verify_stream_pos
     }
 }
 

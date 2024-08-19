@@ -234,7 +234,10 @@ fn run() -> i32 {
                 }
             }
             match FileHeader::from_file(&mut hash_file_reader) {
-                Ok(header) => header,
+                Ok(header) => {
+                    cmd_chosen = HashCommand::VerifyHash(Some(hash_file_reader));
+                    header
+                },
                 Err(e) => {return e}
             }
         },
@@ -367,21 +370,10 @@ fn run() -> i32 {
             writeln!(file_handle, "Hashes:").unwrap();
             file_handle.flush().unwrap();
 
-            debug_assert!(file_header_info.verify_stream_pos().is_none());
             cmd_chosen = HashCommand::GenerateHash(Some(file_handle));
         },
-        HashCommand::VerifyHash(None) => {
-            let read_file_name = cmd_matches.get_one::<PathBuf>("FILE").unwrap();
-            let mut hash_file = match File::open(read_file_name) {
-                Ok(file) => file,
-                Err(e) => {
-                    eprintln!("Error opening hash file {}: {}",
-                            read_file_name.display(), e);
-                    return VERIF_READ_ERR;
-                }
-            };
-            hash_file.seek(SeekFrom::Start(file_header_info.verify_stream_pos().unwrap())).unwrap();
-            cmd_chosen = HashCommand::VerifyHash(Some(BufReader::new(hash_file)))
+        HashCommand::VerifyHash(Some(_)) => {
+            // Do nothing; only broken out to verify that we have Some() variant
         },
         _ => unreachable!()
     };
