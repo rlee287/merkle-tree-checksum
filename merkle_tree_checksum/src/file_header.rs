@@ -207,6 +207,7 @@ impl FileHeader {
     }
 }
 
+// TODO: rethink if we really want to impl Display
 impl fmt::Display for FileHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Hash function: {}", self.hash_function)?;
