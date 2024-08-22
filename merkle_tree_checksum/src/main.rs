@@ -17,6 +17,8 @@ use parse_functions::{extract_long_hash_parts, extract_short_hash_parts, size_st
 use std::path::PathBuf;
 use format_functions::{escape_chars, title_center, abbreviate_filename};
 
+use indicatif::ProgressDrawTarget;
+
 use crc32_utils::Crc32;
 use sha2::{Sha224, Sha256, Sha384, Sha512, Sha512_224, Sha512_256};
 use sha3::{Sha3_224, Sha3_256, Sha3_384, Sha3_512};
@@ -28,6 +30,7 @@ use merkle_tree::{HashData, HashRange};
 use merkle_tree::{branch_t, block_t};
 use merkle_tree::reorder_hashrange_iter;
 
+use utils::setup_pbs;
 use utils::HashFunctions;
 use utils::StoredAndComputed;
 use utils::TreeParams;
@@ -42,7 +45,6 @@ use clap::{crate_authors, crate_description, crate_name, crate_version};
 use clap::{Command, Arg, ArgAction, ArgMatches};
 use clap::builder::EnumValueParser;
 
-use indicatif::{ProgressBar, ProgressStyle, ProgressDrawTarget, MultiProgress};
 use git_version::git_version;
 
 const GENERATE_HASH_CMD_NAME: &str = "generate-hash";
@@ -617,22 +619,7 @@ fn run() -> i32 {
             _ => ProgressDrawTarget::stderr_with_hz(5)
         };
 
-        let pb_holder = MultiProgress::with_draw_target(pb_draw_target);
-        let pb_file = pb_holder.add(ProgressBar::new(file_size));
-        let pb_hash = pb_holder.add(ProgressBar::new(pb_hash_len));
-
-        let pb_file_style = ProgressStyle::default_bar()
-            // 4 = max length of message strings below
-            .template("{msg:4} {bar:20} {bytes:>11}/{total_bytes:11} | {bytes_per_sec:>12}")
-            .unwrap();
-        let pb_hash_style = ProgressStyle::default_bar()
-            .template("{msg:4} {bar:20} {pos:>11}/{len:11} | {per_sec:>12} [{elapsed_precise}] ETA [{eta}]")
-            .unwrap();
-        pb_hash.set_style(pb_hash_style);
-        pb_file.set_style(pb_file_style);
-
-        pb_file.set_message("File");
-        pb_hash.set_message("Hash");
+        let (pb_file, pb_hash) = setup_pbs(pb_draw_target, file_size, pb_hash_len);
 
         if quiet_count == 0 {
             let file_part = file_name.file_name().unwrap()
