@@ -14,7 +14,7 @@ use std::io::{Write, Seek, SeekFrom, BufRead, BufReader, LineWriter};
 
 use semver::VersionReq;
 use parse_functions::{extract_long_hash_parts, extract_short_hash_parts, size_str_to_num};
-use std::path::{Path,PathBuf};
+use std::path::PathBuf;
 use format_functions::{escape_chars, title_center, abbreviate_filename};
 
 use crc32_utils::Crc32;
@@ -611,6 +611,16 @@ fn run() -> i32 {
         };
         let file_size = file_obj.metadata().unwrap().len();
         let pb_hash_len = merkle_tree::node_count(file_size, block_size, branch_factor);
+
+        let pb_draw_target = match quiet_count {
+            0 => ProgressDrawTarget::hidden(),
+            _ => ProgressDrawTarget::stderr_with_hz(5)
+        };
+
+        let pb_holder = MultiProgress::with_draw_target(pb_draw_target);
+        let pb_file = pb_holder.add(ProgressBar::new(file_size));
+        let pb_hash = pb_holder.add(ProgressBar::new(pb_hash_len));
+
         let pb_file_style = ProgressStyle::default_bar()
             // 4 = max length of message strings below
             .template("{msg:4} {bar:20} {bytes:>11}/{total_bytes:11} | {bytes_per_sec:>12}")
@@ -618,31 +628,22 @@ fn run() -> i32 {
         let pb_hash_style = ProgressStyle::default_bar()
             .template("{msg:4} {bar:20} {pos:>11}/{len:11} | {per_sec:>12} [{elapsed_precise}] ETA [{eta}]")
             .unwrap();
+        pb_hash.set_style(pb_hash_style);
+        pb_file.set_style(pb_file_style);
 
-        let pb_holder = MultiProgress::new();
-        let pb_file = pb_holder.add(ProgressBar::new(file_size));
-        let pb_hash = pb_holder.add(ProgressBar::new(pb_hash_len));
+        pb_file.set_message("File");
+        pb_hash.set_message("Hash");
 
-        if quiet_count >= 1 {
-            if quiet_count == 1 {
-                eprintln!("Hashing {}...", filename_str);
-            }
-            pb_holder.set_draw_target(ProgressDrawTarget::hidden());
-        } else { // quiet_count == 0
-            pb_holder.set_draw_target(ProgressDrawTarget::stderr_with_hz(5));
-            pb_hash.set_style(pb_hash_style);
-            pb_file.set_style(pb_file_style);
-
-            let file_part = Path::new(&file_name).file_name().unwrap()
+        if quiet_count == 0 {
+            let file_part = file_name.file_name().unwrap()
                     .to_str().unwrap();
 
             // Leave a padding of at least 3 equal signs on each side
             // TODO: use fixed width, or scale with terminal size?
             let abbreviated_msg = abbreviate_filename(file_part, 80-8);
             eprintln!("{}", title_center(&abbreviated_msg));
-
-            pb_file.set_message("File");
-            pb_hash.set_message("Hash");
+        } else if quiet_count == 1 {
+            eprintln!("Hashing {}...", filename_str);
         }
 
         let (tx, rx, pb_hash): (ChannelOrPb<_>, _, _) = match short_output {
