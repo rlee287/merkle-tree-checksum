@@ -8,7 +8,7 @@ use crate::error_types::HeaderParsingErr;
 use crate::parse_functions::size_str_to_num;
 
 use crossbeam_channel::Sender as CrossbeamSender;
-use indicatif::ProgressBar;
+use indicatif::{ProgressDrawTarget, ProgressStyle, ProgressBar, MultiProgress};
 
 use strum_macros::EnumString;
 
@@ -200,4 +200,27 @@ pub(crate) fn str_to_files(file_str: &str) -> Option<Vec<PathBuf>> {
         return None;
     }
     return Some(file_list);
+}
+
+pub(crate) fn setup_pbs(pb_draw_target: ProgressDrawTarget, file_size: u64, pb_hash_len: u64) -> (ProgressBar, ProgressBar) {
+    let pb_holder = MultiProgress::with_draw_target(pb_draw_target);
+
+    let pb_file = pb_holder.add(ProgressBar::new(file_size));
+    let pb_hash = pb_holder.add(ProgressBar::new(pb_hash_len));
+
+    let pb_file_style = ProgressStyle::default_bar()
+        // 4 = max length of message strings below
+        .template("{msg:4} {bar:20} {bytes:>11}/{total_bytes:11} | {bytes_per_sec:>12}")
+        .unwrap();
+    let pb_hash_style = ProgressStyle::default_bar()
+        .template("{msg:4} {bar:20} {pos:>11}/{len:11} | {per_sec:>12} [{elapsed_precise}] ETA [{eta}]")
+        .unwrap();
+
+    pb_hash.set_style(pb_hash_style);
+    pb_file.set_style(pb_file_style);
+
+    pb_file.set_message("File");
+    pb_hash.set_message("Hash");
+
+    (pb_file, pb_hash)
 }
