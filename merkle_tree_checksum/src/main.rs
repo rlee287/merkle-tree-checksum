@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod crc32_utils;
+mod hash_enum;
 mod utils;
 mod error_types;
 mod format_functions;
@@ -28,7 +29,8 @@ use merkle_tree::{HashData, HashRange};
 use merkle_tree::{branch_t, block_t};
 use merkle_tree::reorder_hashrange_iter;
 
-use utils::HashFunctions;
+use hash_enum::HashFunctions;
+
 use utils::StoredAndComputed;
 use utils::TreeParams;
 use utils::ChannelOrPb;
