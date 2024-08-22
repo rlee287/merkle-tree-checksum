@@ -1,7 +1,8 @@
 use crate::{StoredAndComputed, TreeParams};
+use crate::hash_enum::HashFunctions;
 use crate::error_types::PreHashError;
 use crate::parse_functions::extract_quoted_filename;
-use crate::utils::{HashFunctions, path_to_files};
+use crate::utils::path_to_files;
 use merkle_tree::{block_t, branch_t};
 
 use std::fs::File;
