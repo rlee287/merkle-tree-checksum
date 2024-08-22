@@ -287,9 +287,9 @@ impl fmt::Display for TreeParams {
     }
 }
 
-pub(crate) fn str_to_files(file_str: impl AsRef<OsStr>) -> Option<Vec<PathBuf>> {
+pub(crate) fn path_to_files(input_path: impl AsRef<OsStr>) -> Option<Vec<PathBuf>> {
     let mut file_list = Vec::<PathBuf>::new();
-    let file_path = Path::new(file_str.as_ref());
+    let file_path = Path::new(input_path.as_ref());
     if file_path.is_file() {
         file_list.push(file_path.to_path_buf());
     } else if file_path.is_dir() {

@@ -1,7 +1,7 @@
 use crate::{StoredAndComputed, TreeParams};
 use crate::error_types::PreHashError;
 use crate::parse_functions::extract_quoted_filename;
-use crate::utils::{HashFunctions, str_to_files};
+use crate::utils::{HashFunctions, path_to_files};
 use merkle_tree::{block_t, branch_t};
 
 use std::fs::File;
@@ -26,7 +26,7 @@ impl FileHeader {
         let file_vec: Vec<_> = args.get_many::<PathBuf>("FILES").unwrap().collect();
         let mut collect_vec: Vec<_> = Vec::with_capacity(file_vec.len());
         for file_path in file_vec {
-            match str_to_files(file_path) {
+            match path_to_files(file_path) {
                 Some(paths) => {
                     for path in paths {
                         match File::open(&path) {
